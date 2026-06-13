@@ -29,12 +29,14 @@ struct BattleView: View {
                         BattleResultBanner(result: battle.result)
                     } else {
                         HStack {
-                            ProgressView()
-                                .scaleEffect(0.6)
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
                             Text("战斗中...")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
+                        .frame(height: 18)
                     }
                 }
                 .padding()
@@ -56,20 +58,12 @@ struct BattleView: View {
 /// 战斗场景 — 像素风动画
 struct BattleSceneView: View {
     @ObservedObject var battle: Battle
-    @State private var heroAttackOffset: CGFloat = 0
-    @State private var monsterShake: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 40) {
             // 英雄
             VStack(spacing: 4) {
                 PixelSprite(imageName: "battle_knight", size: CGSize(width: 80, height: 100))
-                    .offset(x: heroAttackOffset)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 0.3).repeatForever(autoreverses: true)) {
-                            heroAttackOffset = 10
-                        }
-                    }
 
                 // 英雄血条
                 VStack(spacing: 1) {
@@ -97,12 +91,6 @@ struct BattleSceneView: View {
             // 怪物
             VStack(spacing: 4) {
                 BattleSprite(monsterID: battle.monster.id, size: CGSize(width: 80, height: 100))
-                    .offset(x: monsterShake)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 0.1).repeatForever(autoreverses: true)) {
-                            monsterShake = 3
-                        }
-                    }
 
                 // 怪物血条
                 VStack(spacing: 1) {

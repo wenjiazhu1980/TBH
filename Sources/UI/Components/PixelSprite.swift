@@ -30,16 +30,9 @@ struct PixelSprite: View {
 struct BattleSprite: View {
     let monsterID: String
     var size: CGSize = CGSize(width: 64, height: 64)
-    @State private var phase = 0
 
     var body: some View {
         PixelSprite(imageName: MonsterArt.spriteName(for: monsterID), size: size)
-            .offset(y: phase == 0 ? -2 : 2)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
-                    phase = 1
-                }
-            }
     }
 }
 
@@ -60,15 +53,19 @@ enum MonsterArt {
 
 extension NSImage {
     private static let extractedSubdirectory = "Extracted"
+    private static let resourceBundleName = "TBH-macOS_TBH.bundle"
 
     /// 从 Extracted 素材目录加载图片。
-    /// 查找顺序：SPM 资源 bundle（子目录/展平两种布局）→ 仓库内开发路径（由源码位置推导，不含硬编码用户路径）。
+    /// 查找顺序：打包后的 .app Resources → SwiftPM 构建目录 → 仓库内开发路径。
     static func loadExtracted(named name: String) -> NSImage? {
         guard !name.isEmpty else { return nil }
 
-        if let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: extractedSubdirectory)
-                  ?? Bundle.module.url(forResource: name, withExtension: "png") {
-            return NSImage(contentsOf: url)
+        for bundle in resourceBundles() {
+            if let url = bundle.url(forResource: name, withExtension: "png", subdirectory: extractedSubdirectory)
+                      ?? bundle.url(forResource: name, withExtension: "png"),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
         }
 
         // 开发 fallback：从本源文件位置推导仓库根目录
@@ -79,5 +76,23 @@ extension NSImage {
             .deletingLastPathComponent()  // 仓库根
         let devURL = repoRoot.appendingPathComponent("Sources/Resources/\(extractedSubdirectory)/\(name).png")
         return NSImage(contentsOf: devURL)
+    }
+
+    private static func resourceBundles() -> [Bundle] {
+        var seen = Set<String>()
+        var candidates: [URL] = []
+
+        func append(_ url: URL?) {
+            guard let url else { return }
+            let path = url.standardizedFileURL.path
+            guard seen.insert(path).inserted else { return }
+            candidates.append(url)
+        }
+
+        append(Bundle.main.resourceURL?.appendingPathComponent(resourceBundleName))
+        append(Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent(resourceBundleName))
+        append(Bundle.main.bundleURL.appendingPathComponent(resourceBundleName))
+
+        return candidates.compactMap { Bundle(url: $0) }
     }
 }

@@ -3,6 +3,10 @@ import SwiftUI
 @main
 enum Main {
     static func main() {
+        if CommandLine.arguments.contains("--resource-self-test") {
+            ResourceSelfTest.runAll()
+        }
+
         #if DEBUG
         if CommandLine.arguments.contains("--self-test") {
             SelfTest.runAll()

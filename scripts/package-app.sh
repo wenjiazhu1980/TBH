@@ -8,13 +8,19 @@ cd "$(dirname "$0")/.."
 OUT_DIR="${1:-dist}"
 APP_NAME="TBH"
 BUNDLE_ID="com.tbh.game"
-VERSION="0.1.0"
+VERSION="0.1.1"
 RESOURCE_BUNDLE="TBH-macOS_TBH.bundle"  # SPM 资源 bundle 命名：<Package>_<Target>
 
-echo "==> swift build -c release"
-swift build -c release
+SWIFT_BUILD_ARGS=()
+if [ -n "${SWIFT_BUILD_FLAGS:-}" ]; then
+    # shellcheck disable=SC2206
+    SWIFT_BUILD_ARGS=(${SWIFT_BUILD_FLAGS})
+fi
 
-BIN_PATH="$(swift build -c release --show-bin-path)"
+echo "==> swift build -c release ${SWIFT_BUILD_FLAGS:-}"
+swift build -c release "${SWIFT_BUILD_ARGS[@]}"
+
+BIN_PATH="$(swift build -c release "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
 APP_ROOT="$OUT_DIR/$APP_NAME.app"
 
 echo "==> 组装 $APP_ROOT"
@@ -23,11 +29,13 @@ mkdir -p "$APP_ROOT/Contents/MacOS" "$APP_ROOT/Contents/Resources"
 
 cp "$BIN_PATH/$APP_NAME" "$APP_ROOT/Contents/MacOS/$APP_NAME"
 
-# SPM 资源 bundle（像素素材）放入 Resources，Bundle.module 运行时可定位
+# SPM resources live in the standard app Resources directory. The runtime loader
+# resolves this bundle via Bundle.main.resourceURL for packaged .app launches.
 if [ -d "$BIN_PATH/$RESOURCE_BUNDLE" ]; then
     cp -R "$BIN_PATH/$RESOURCE_BUNDLE" "$APP_ROOT/Contents/Resources/"
 else
-    echo "警告: 未找到资源 bundle $RESOURCE_BUNDLE，素材将使用占位符" >&2
+    echo "错误: 未找到资源 bundle $RESOURCE_BUNDLE，无法生成可启动的应用包" >&2
+    exit 1
 fi
 
 cat > "$APP_ROOT/Contents/Info.plist" <<PLIST
@@ -60,5 +68,8 @@ PLIST
 # 无签名身份时使用 ad-hoc 签名，保证本机可运行
 echo "==> codesign (ad-hoc)"
 codesign --force --deep --sign - "$APP_ROOT"
+
+echo "==> resource self-test"
+"$APP_ROOT/Contents/MacOS/$APP_NAME" --resource-self-test
 
 echo "==> 完成: $APP_ROOT"
