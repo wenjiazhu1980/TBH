@@ -8,19 +8,23 @@ cd "$(dirname "$0")/.."
 OUT_DIR="${1:-dist}"
 APP_NAME="TBH"
 BUNDLE_ID="com.tbh.game"
-VERSION="0.1.1"
+VERSION="0.1.2"
 RESOURCE_BUNDLE="TBH-macOS_TBH.bundle"  # SPM 资源 bundle 命名：<Package>_<Target>
 
-SWIFT_BUILD_ARGS=()
+echo "==> swift build -c release ${SWIFT_BUILD_FLAGS:-}"
 if [ -n "${SWIFT_BUILD_FLAGS:-}" ]; then
-    # shellcheck disable=SC2206
-    SWIFT_BUILD_ARGS=(${SWIFT_BUILD_FLAGS})
+    # shellcheck disable=SC2086
+    swift build -c release ${SWIFT_BUILD_FLAGS}
+else
+    swift build -c release
 fi
 
-echo "==> swift build -c release ${SWIFT_BUILD_FLAGS:-}"
-swift build -c release "${SWIFT_BUILD_ARGS[@]}"
-
-BIN_PATH="$(swift build -c release "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
+if [ -n "${SWIFT_BUILD_FLAGS:-}" ]; then
+    # shellcheck disable=SC2086
+    BIN_PATH="$(swift build -c release ${SWIFT_BUILD_FLAGS} --show-bin-path)"
+else
+    BIN_PATH="$(swift build -c release --show-bin-path)"
+fi
 APP_ROOT="$OUT_DIR/$APP_NAME.app"
 
 echo "==> 组装 $APP_ROOT"
