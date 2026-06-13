@@ -1,8 +1,10 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*'
   pull_request:
   workflow_dispatch:
 
@@ -10,8 +12,19 @@ jobs:
   build-test-package:
     name: Build, Test & Package (macOS)
     runs-on: macos-latest
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Swift cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
 
       - name: Swift version
         run: swift --version
@@ -28,9 +41,72 @@ jobs:
       - name: Package TBH.app (release)
         run: bash scripts/package-app.sh dist
 
+      - name: Create DMG (if release)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "TBH Installer" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 450 185 \
+            "dist/TBH.dmg" \
+            "dist/TBH.app" || true
+
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TBH-app
+          name: TBH-app-${{ github.sha }}
           path: dist/TBH.app
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload DMG artifact (if release)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: TBH-dmg-${{ github.sha }}
+          path: dist/TBH.dmg
+          if-no-files-found: warn
+
+  release:
+    name: Create Release
+    needs: build-test-package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TBH-app-${{ github.sha }}
+          path: release-assets/
+
+      - name: Download DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TBH-dmg-${{ github.sha }}
+          path: release-assets/
+        continue-on-error: true
+
+      - name: Create ZIP archive
+        run: |
+          cd release-assets
+          zip -r TBH-${{ github.ref_name }}.zip TBH.app
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-assets/TBH-${{ github.ref_name }}.zip
+            release-assets/TBH.dmg
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,65 @@
+name: Nightly Build
+
+on:
+  schedule:
+    # 每天 UTC 时间 02:00 (北京时间 10:00) 运行
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-build:
+    name: Nightly Build
+    runs-on: macos-latest
+    if: github.repository == 'wenjiazhu1980/TBH'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Clean build
+        run: swift package clean
+
+      - name: Build Debug
+        run: swift build -c debug
+
+      - name: Build Release
+        run: swift build -c release
+
+      - name: Run tests
+        run: swift test
+
+      - name: Run self-test
+        run: swift run TBH --self-test
+
+      - name: Package app
+        run: bash scripts/package-app.sh dist
+
+      - name: Check app bundle
+        run: |
+          ls -lh dist/
+          codesign -dvvv dist/TBH.app || echo "Not signed"
+
+      - name: Upload nightly build
+        uses: actions/upload-artifact@v4
+        with:
+          name: TBH-nightly-${{ github.sha }}
+          path: dist/TBH.app
+          retention-days: 7
+
+      - name: Report build status
+        if: failure()
+        run: |
+          echo "::error::Nightly build failed!"
+          echo "Check the logs for details"

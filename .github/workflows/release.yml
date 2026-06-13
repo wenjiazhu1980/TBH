@@ -1,0 +1,106 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-release:
+    name: Build Release
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build Release
+        run: swift build -c release
+
+      - name: Run tests
+        run: swift test
+
+      - name: Package TBH.app
+        run: bash scripts/package-app.sh dist
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "TBH Installer" \
+            --volicon "Resources/AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "TBH.app" 150 185 \
+            --app-drop-link 450 185 \
+            --background "Resources/dmg-background.png" \
+            "dist/TBH-${{ inputs.version }}.dmg" \
+            "dist/TBH.app" || \
+          create-dmg \
+            --volname "TBH Installer" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 450 185 \
+            "dist/TBH-${{ inputs.version }}.dmg" \
+            "dist/TBH.app"
+
+      - name: Create ZIP archive
+        run: |
+          cd dist
+          zip -r TBH-${{ inputs.version }}.zip TBH.app
+
+      - name: Calculate checksums
+        run: |
+          cd dist
+          shasum -a 256 TBH-${{ inputs.version }}.dmg > checksums.txt
+          shasum -a 256 TBH-${{ inputs.version }}.zip >> checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          files: |
+            dist/TBH-${{ inputs.version }}.dmg
+            dist/TBH-${{ inputs.version }}.zip
+            dist/checksums.txt
+          draft: true
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TBH-release-${{ inputs.version }}
+          path: |
+            dist/TBH-${{ inputs.version }}.dmg
+            dist/TBH-${{ inputs.version }}.zip
+            dist/checksums.txt
+          retention-days: 90
