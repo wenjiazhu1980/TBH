@@ -94,10 +94,18 @@ jobs:
           path: release-assets/dmg/
         continue-on-error: true
 
+      - name: Debug - List downloaded files
+        run: |
+          echo "=== release-assets structure ==="
+          ls -laR release-assets/
+          echo "=== Current directory ==="
+          pwd
+          ls -la
+
       - name: Create ZIP archive
         run: |
           cd release-assets/app
-          zip -r ../TBH-${{ github.ref_name }}.zip TBH.app
+          zip -r ../TBH-${{ github.ref_name }}.zip .
           cd ../..
           if [ -f release-assets/dmg/TBH.dmg ]; then
             mv release-assets/dmg/TBH.dmg release-assets/
