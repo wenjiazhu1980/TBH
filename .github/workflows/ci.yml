@@ -85,19 +85,23 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: TBH-app-${{ github.sha }}
-          path: release-assets/
+          path: release-assets/app/
 
       - name: Download DMG artifact
         uses: actions/download-artifact@v4
         with:
           name: TBH-dmg-${{ github.sha }}
-          path: release-assets/
+          path: release-assets/dmg/
         continue-on-error: true
 
       - name: Create ZIP archive
         run: |
-          cd release-assets
-          zip -r TBH-${{ github.ref_name }}.zip TBH.app
+          cd release-assets/app
+          zip -r ../TBH-${{ github.ref_name }}.zip TBH.app
+          cd ../..
+          if [ -f release-assets/dmg/TBH.dmg ]; then
+            mv release-assets/dmg/TBH.dmg release-assets/
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
