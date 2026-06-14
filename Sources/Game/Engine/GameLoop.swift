@@ -9,6 +9,7 @@ class GameEngine: ObservableObject {
     @Published var inventory: Inventory
     @Published var progress: ProgressTracker
     @Published var statistics: GameStatistics
+    @Published var autoEquipBestItems: Bool
 
     private var tickTimer: Timer?
     private let tickInterval: TimeInterval = 1.0
@@ -24,6 +25,7 @@ class GameEngine: ObservableObject {
         self.inventory = Inventory()
         self.progress = ProgressTracker()
         self.statistics = GameStatistics()
+        self.autoEquipBestItems = false
         self.saveManager = saveManager
     }
 
@@ -105,8 +107,8 @@ class GameEngine: ObservableObject {
         case .victory(let rewards):
             hero.gainXP(rewards.xp)
             hero.gainGold(rewards.gold)
-            // 背包满时战利品丢失，统计只记实际入包的物品
-            let lootStored = rewards.lootItem.map { inventory.add($0) } ?? false
+            // 背包满时战利品丢失；自动装备成功也视作已保留战利品。
+            let lootStored = retainLoot(rewards.lootItem)
             progress.advance()
             statistics.recordVictory(
                 rewards: rewards,
@@ -126,10 +128,56 @@ class GameEngine: ObservableObject {
     /// 从背包装备物品；被替换下的旧装备放回背包，不会丢失
     func equipItem(_ item: Item) {
         guard item.slot != nil else { return }
+        guard inventory.items.contains(item) else { return }
         inventory.remove(item)
         if let old = hero.equipment.equip(item) {
             inventory.add(old)
         }
+    }
+
+    func setAutoEquipBestItems(_ enabled: Bool) {
+        autoEquipBestItems = enabled
+        if enabled {
+            equipBestItemsFromInventory()
+        }
+        save()
+    }
+
+    func equipBestItemsFromInventory() {
+        for slot in EquipSlot.allCases {
+            guard let best = inventory.items
+                .filter({ $0.slot == slot })
+                .max(by: { $0.equipmentScore < $1.equipmentScore }) else {
+                continue
+            }
+
+            if best.isBetterEquipment(than: hero.equipment.item(in: slot)) {
+                equipItem(best)
+            }
+        }
+    }
+
+    private func retainLoot(_ item: Item?) -> Bool {
+        guard let item else { return false }
+
+        if autoEquipBestItems, autoEquipLootItemIfBetter(item) {
+            return true
+        }
+
+        return inventory.add(item)
+    }
+
+    private func autoEquipLootItemIfBetter(_ item: Item) -> Bool {
+        guard let slot = item.slot else { return false }
+        guard item.isBetterEquipment(than: hero.equipment.item(in: slot)) else { return false }
+
+        let old = hero.equipment.item(in: slot)
+        guard old == nil || !inventory.isFull else { return false }
+
+        if let old = hero.equipment.equip(item) {
+            inventory.add(old)
+        }
+        return true
     }
 
     // MARK: - Offline Progress
@@ -160,6 +208,7 @@ class GameEngine: ObservableObject {
             inventory: inventory,
             progress: progress,
             statistics: statistics,
+            autoEquipBestItems: autoEquipBestItems,
             timestamp: Date()
         )
         saveManager.save(data)
@@ -171,6 +220,10 @@ class GameEngine: ObservableObject {
         inventory = data.inventory
         progress = data.progress
         statistics = data.statistics
+        autoEquipBestItems = data.autoEquipBestItems
+        if autoEquipBestItems {
+            equipBestItemsFromInventory()
+        }
     }
 
     /// 删除存档并将内存中的游戏状态完整重置
@@ -180,6 +233,7 @@ class GameEngine: ObservableObject {
         inventory = Inventory()
         progress = ProgressTracker()
         statistics = GameStatistics()
+        autoEquipBestItems = false
         ticksSinceLastSave = 0
         startNextBattle()
     }

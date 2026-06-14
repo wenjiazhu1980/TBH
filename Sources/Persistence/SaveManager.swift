@@ -7,7 +7,38 @@ struct SaveData: Codable {
     let inventory: Inventory
     let progress: ProgressTracker
     let statistics: GameStatistics
+    let autoEquipBestItems: Bool
     let timestamp: Date
+
+    init(
+        hero: Hero,
+        inventory: Inventory,
+        progress: ProgressTracker,
+        statistics: GameStatistics,
+        autoEquipBestItems: Bool = false,
+        timestamp: Date
+    ) {
+        self.hero = hero
+        self.inventory = inventory
+        self.progress = progress
+        self.statistics = statistics
+        self.autoEquipBestItems = autoEquipBestItems
+        self.timestamp = timestamp
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case hero, inventory, progress, statistics, autoEquipBestItems, timestamp
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hero = try c.decode(Hero.self, forKey: .hero)
+        inventory = try c.decode(Inventory.self, forKey: .inventory)
+        progress = try c.decode(ProgressTracker.self, forKey: .progress)
+        statistics = try c.decode(GameStatistics.self, forKey: .statistics)
+        autoEquipBestItems = try c.decodeIfPresent(Bool.self, forKey: .autoEquipBestItems) ?? false
+        timestamp = try c.decode(Date.self, forKey: .timestamp)
+    }
 }
 
 /// 存档管理器 — JSON 文件存储

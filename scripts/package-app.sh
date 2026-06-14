@@ -10,6 +10,7 @@ APP_NAME="TBH"
 BUNDLE_ID="com.tbh.game"
 VERSION="0.1.2"
 RESOURCE_BUNDLE="TBH-macOS_TBH.bundle"  # SPM 资源 bundle 命名：<Package>_<Target>
+ICON_FILE="TBH.icns"
 
 echo "==> swift build -c release ${SWIFT_BUILD_FLAGS:-}"
 if [ -n "${SWIFT_BUILD_FLAGS:-}" ]; then
@@ -42,6 +43,14 @@ else
     exit 1
 fi
 
+PREBUILT_ICON_SOURCE="$BIN_PATH/$RESOURCE_BUNDLE/Extracted/$ICON_FILE"
+if [ -f "$PREBUILT_ICON_SOURCE" ]; then
+    echo "==> 安装应用图标"
+    cp "$PREBUILT_ICON_SOURCE" "$APP_ROOT/Contents/Resources/$ICON_FILE"
+else
+    echo "警告: 未找到 $ICON_FILE，应用包将不包含自定义 Finder 图标" >&2
+fi
+
 cat > "$APP_ROOT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -53,6 +62,8 @@ cat > "$APP_ROOT/Contents/Info.plist" <<PLIST
     <string>$BUNDLE_ID</string>
     <key>CFBundleName</key>
     <string>$APP_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>TBH</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

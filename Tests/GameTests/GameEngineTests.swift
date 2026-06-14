@@ -66,6 +66,24 @@ import Foundation
         #expect(engine.hero.equipment.weapon == nil)
     }
 
+    @Test func autoEquipBestItemsUsesBestItemPerSlot() {
+        let engine = makeEngine()
+        let weakSword = Item(id: "s1", name: "旧剑", rarity: .common, slot: .weapon, stats: ItemStats(bonusATK: 3), description: "")
+        let strongSword = Item(id: "s2", name: "钢剑", rarity: .rare, slot: .weapon, stats: ItemStats(bonusATK: 12), description: "")
+        let helmet = Item(id: "h1", name: "皮帽", rarity: .uncommon, slot: .helmet, stats: ItemStats(bonusHP: 25), description: "")
+        engine.inventory.add(weakSword)
+        engine.inventory.add(strongSword)
+        engine.inventory.add(helmet)
+
+        engine.setAutoEquipBestItems(true)
+
+        #expect(engine.autoEquipBestItems)
+        #expect(engine.hero.equipment.weapon?.id == "s2")
+        #expect(engine.hero.equipment.helmet?.id == "h1")
+        #expect(engine.inventory.items.contains(weakSword))
+        #expect(!engine.inventory.items.contains(strongSword))
+    }
+
     @Test func resetGameClearsState() {
         let engine = makeEngine()
         engine.hero.gainGold(999)
@@ -95,11 +113,13 @@ import Foundation
             inventory: Inventory(),
             progress: ProgressTracker(),
             statistics: GameStatistics(),
+            autoEquipBestItems: true,
             timestamp: Date()
         )
         manager.save(data)
 
         let loaded = try #require(manager.load())
         #expect(loaded.hero.gold == 123)
+        #expect(loaded.autoEquipBestItems)
     }
 }

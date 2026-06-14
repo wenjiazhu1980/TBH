@@ -24,14 +24,11 @@ struct InventoryView: View {
 
             if inventory.items.isEmpty {
                 VStack(spacing: 8) {
-                    // 用像素图标替代 SF Symbol
-                    if let nsImage = NSImage.loadExtracted(named: "item_0_0") {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .interpolation(.none)
-                            .frame(width: 32, height: 32)
-                            .opacity(0.3)
-                    }
+                    PixelSprite(
+                        imageName: "official_item_box",
+                        size: CGSize(width: 42, height: 42)
+                    )
+                    .opacity(0.35)
                     Text("背包为空")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -43,7 +40,7 @@ struct InventoryView: View {
             } else {
                 // 物品网格（5列）
                 ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(48)), count: 5), spacing: 4) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(50)), count: 5), spacing: 6) {
                         ForEach(inventory.items) { item in
                             ItemGridCell(item: item, isSelected: selectedItems.contains(item))
                                 .onTapGesture {
@@ -60,9 +57,11 @@ struct InventoryView: View {
 
                 // 操作按钮
                 if let item = selectedItem {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         // 物品详情
-                        ItemDetailHeader(item: item)
+                        ItemDetailHeader(item: item, currentItem: currentEquippedItem(for: item))
+
+                        EquipmentComparisonView(hero: hero, item: item)
 
                         HStack {
                             if item.slot != nil {
@@ -88,6 +87,11 @@ struct InventoryView: View {
             }
         }
     }
+
+    private func currentEquippedItem(for item: Item) -> Item? {
+        guard let slot = item.slot else { return nil }
+        return hero.equipment.item(in: slot)
+    }
 }
 
 /// 物品网格单元格
@@ -99,60 +103,49 @@ struct ItemGridCell: View {
         ZStack {
             // 背景
             RoundedRectangle(cornerRadius: 4)
-                .fill(Color(hex: item.rarity.color).opacity(isSelected ? 0.4 : 0.15))
-                .frame(width: 44, height: 44)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: item.rarity.color).opacity(isSelected ? 0.38 : 0.20),
+                            Color.black.opacity(0.18)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 46, height: 46)
 
             // 像素物品图标
-            if let nsImage = NSImage.loadExtracted(named: itemIconName) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .interpolation(.none)
-                    .frame(width: 32, height: 32)
-            } else {
-                // 后备：使用槽位图标
-                Image(systemName: slotIcon)
-                    .font(.system(size: 16))
-                    .foregroundColor(Color(hex: item.rarity.color))
-            }
+            PixelSprite(
+                imageName: GameArt.itemIconName(for: item),
+                size: CGSize(width: 32, height: 32)
+            )
 
             // 选中边框
-            if isSelected {
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.white, lineWidth: 2)
-                    .frame(width: 44, height: 44)
-            }
-        }
-    }
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(
+                    isSelected ? Color.white : Color(hex: item.rarity.color).opacity(0.35),
+                    lineWidth: isSelected ? 2 : 1
+                )
+                .frame(width: 46, height: 46)
 
-    private var itemIconName: String {
-        // 映射到提取的素材名称
-        let slot: String
-        switch item.slot {
-        case .weapon: slot = "0_0"
-        case .armor: slot = "0_1"
-        case .helmet: slot = "0_2"
-        case .boots: slot = "0_3"
-        case .accessory: slot = "0_4"
-        case .none: slot = "1_0"
+            Text(item.rarity.rawValue.prefix(1))
+                .font(.system(size: 7, weight: .black, design: .monospaced))
+                .foregroundColor(Color(hex: item.rarity.color))
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
+                .background(Color.black.opacity(0.55))
+                .cornerRadius(2)
+                .offset(x: 14, y: 15)
         }
-        return "item_\(slot)"
-    }
-
-    private var slotIcon: String {
-        guard let slot = item.slot else { return "questionmark" }
-        switch slot {
-        case .weapon: return "sword.crossed"
-        case .armor: return "shield"
-        case .helmet: return "crown"
-        case .boots: return "shoe"
-        case .accessory: return "sparkles"
-        }
+        .frame(width: 50, height: 50)
     }
 }
 
 /// 物品详情头部
 struct ItemDetailHeader: View {
     let item: Item
+    let currentItem: Item?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -161,12 +154,10 @@ struct ItemDetailHeader: View {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(hex: item.rarity.color).opacity(0.2))
                     .frame(width: 40, height: 40)
-                if let nsImage = NSImage.loadExtracted(named: "item_0_0") {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .interpolation(.none)
-                        .frame(width: 32, height: 32)
-                }
+                PixelSprite(
+                    imageName: GameArt.itemIconName(for: item),
+                    size: CGSize(width: 32, height: 32)
+                )
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -176,6 +167,12 @@ struct ItemDetailHeader: View {
                 Text(item.rarity.rawValue)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
+                if let currentItem {
+                    Text("当前: \(currentItem.name)")
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -199,5 +196,152 @@ struct ItemDetailHeader: View {
                 }
             }
         }
+    }
+}
+
+struct EquipmentComparisonView: View {
+    @ObservedObject var hero: Hero
+    let item: Item
+
+    private var currentItem: Item? {
+        guard let slot = item.slot else { return nil }
+        return hero.equipment.item(in: slot)
+    }
+
+    private var delta: ItemStats {
+        let currentStats = currentItem?.stats ?? ItemStats()
+        return ItemStats(
+            bonusHP: item.stats.bonusHP - currentStats.bonusHP,
+            bonusATK: item.stats.bonusATK - currentStats.bonusATK,
+            bonusDEF: item.stats.bonusDEF - currentStats.bonusDEF,
+            bonusSPD: item.stats.bonusSPD - currentStats.bonusSPD,
+            bonusCritRate: item.stats.bonusCritRate - currentStats.bonusCritRate,
+            bonusCritDamage: item.stats.bonusCritDamage - currentStats.bonusCritDamage
+        )
+    }
+
+    var body: some View {
+        if item.slot == nil {
+            HStack {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.secondary)
+                Text("不可装备")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding(.vertical, 2)
+        } else {
+            VStack(spacing: 5) {
+                HStack(spacing: 6) {
+                    EquipmentDeltaChip(label: "HP", value: delta.bonusHP)
+                    EquipmentDeltaChip(label: "ATK", value: delta.bonusATK)
+                    EquipmentDeltaChip(label: "DEF", value: delta.bonusDEF)
+                    EquipmentDeltaChip(label: "SPD", value: delta.bonusSPD)
+                }
+
+                HStack(spacing: 6) {
+                    EquipmentDeltaChip(label: "暴击", valueText: percentDelta(delta.bonusCritRate), isPositive: delta.bonusCritRate > 0, isNegative: delta.bonusCritRate < 0)
+                    EquipmentDeltaChip(label: "暴伤", valueText: percentDelta(delta.bonusCritDamage), isPositive: delta.bonusCritDamage > 0, isNegative: delta.bonusCritDamage < 0)
+                    EquipmentDeltaChip(label: "评分", valueText: scoreDeltaText, isPositive: scoreDelta > 0, isNegative: scoreDelta < 0)
+                }
+
+                VStack(spacing: 2) {
+                    PreviewStatRow(label: "生命", current: "\(hero.maxHP)", projected: "\(hero.maxHP + delta.bonusHP)", delta: Double(delta.bonusHP))
+                    PreviewStatRow(label: "攻击", current: "\(hero.attack)", projected: "\(hero.attack + delta.bonusATK)", delta: Double(delta.bonusATK))
+                    PreviewStatRow(label: "防御", current: "\(hero.defense)", projected: "\(hero.defense + delta.bonusDEF)", delta: Double(delta.bonusDEF))
+                    PreviewStatRow(label: "速度", current: "\(hero.speed)", projected: "\(hero.speed + delta.bonusSPD)", delta: Double(delta.bonusSPD))
+                }
+            }
+            .padding(6)
+            .background(Color.black.opacity(0.14))
+            .cornerRadius(5)
+        }
+    }
+
+    private var scoreDelta: Double {
+        item.equipmentScore - (currentItem?.equipmentScore ?? 0)
+    }
+
+    private var scoreDeltaText: String {
+        if scoreDelta > 0 {
+            return "+\(Int(scoreDelta.rounded()))"
+        }
+        return "\(Int(scoreDelta.rounded()))"
+    }
+
+    private func percentDelta(_ value: Double) -> String {
+        let percent = value * 100
+        if percent > 0 {
+            return String(format: "+%.1f%%", percent)
+        }
+        return String(format: "%.1f%%", percent)
+    }
+}
+
+struct EquipmentDeltaChip: View {
+    let label: String
+    var value: Int? = nil
+    var valueText: String? = nil
+    var isPositive: Bool? = nil
+    var isNegative: Bool? = nil
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .foregroundColor(.secondary)
+            Text(displayValue)
+                .foregroundColor(valueColor)
+        }
+        .font(.system(size: 8, weight: .medium, design: .monospaced))
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(valueColor.opacity(0.12))
+        .cornerRadius(4)
+    }
+
+    private var displayValue: String {
+        if let valueText {
+            return valueText
+        }
+        let value = value ?? 0
+        return value > 0 ? "+\(value)" : "\(value)"
+    }
+
+    private var valueColor: Color {
+        let positive = isPositive ?? ((value ?? 0) > 0)
+        let negative = isNegative ?? ((value ?? 0) < 0)
+        if positive { return .green }
+        if negative { return .red }
+        return .secondary
+    }
+}
+
+struct PreviewStatRow: View {
+    let label: String
+    let current: String
+    let projected: String
+    let delta: Double
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(current)
+                .foregroundColor(.secondary)
+            Image(systemName: "arrow.right")
+                .font(.system(size: 7, weight: .semibold))
+                .foregroundColor(.secondary)
+            Text(projected)
+                .foregroundColor(deltaColor)
+        }
+        .font(.system(size: 8, weight: .medium, design: .monospaced))
+    }
+
+    private var deltaColor: Color {
+        if delta > 0 { return .green }
+        if delta < 0 { return .red }
+        return .secondary
     }
 }

@@ -4,9 +4,14 @@ import Foundation
 /// Release-safe resource check used by packaging and CI.
 enum ResourceSelfTest {
     private static let requiredSprites = [
-        "hero_knight",
-        "monster_slime_red",
-        "battle_knight"
+        "app_icon",
+        "official_hero_knight",
+        "official_monster_slime",
+        "official_item_weapon",
+        "official_item_armor",
+        "official_item_helmet",
+        "official_item_boots",
+        "official_item_accessory"
     ]
 
     static func runAll() -> Never {

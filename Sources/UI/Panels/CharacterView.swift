@@ -12,10 +12,31 @@ struct CharacterView: View {
                     Spacer()
                     VStack(spacing: 8) {
                         // 像素英雄精灵
-                        PixelSprite(
-                            imageName: "hero_knight",
-                            size: CGSize(width: 80, height: 100)
-                        )
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.black.opacity(0.34),
+                                            Color.accentColor.opacity(0.12)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .frame(width: 116, height: 132)
+
+                            Ellipse()
+                                .fill(Color.black.opacity(0.28))
+                                .frame(width: 70, height: 12)
+                                .offset(y: -8)
+
+                            PixelSprite(
+                                imageName: GameArt.heroSpriteName(for: hero.heroClass),
+                                size: CGSize(width: 90, height: 118)
+                            )
+                            .padding(.bottom, 14)
+                        }
                         Text(hero.name)
                             .font(.headline)
                         HStack {
@@ -97,11 +118,19 @@ struct EquipmentRow: View {
     var body: some View {
         HStack(spacing: 8) {
             // 槽位图标
-            if item != nil, let nsImage = NSImage.loadExtracted(named: "item_0_0") {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .interpolation(.none)
-                    .frame(width: 24, height: 24)
+            if let item {
+                PixelSprite(
+                    imageName: GameArt.itemIconName(for: item),
+                    size: CGSize(width: 24, height: 24)
+                )
+                .frame(width: 24, height: 24)
+            } else if let slot = equipSlot {
+                PixelSprite(
+                    imageName: GameArt.itemIconName(for: slot),
+                    size: CGSize(width: 22, height: 22)
+                )
+                .opacity(0.45)
+                .frame(width: 24, height: 24)
             } else {
                 Image(systemName: slotIcon)
                     .font(.system(size: 12))
@@ -135,6 +164,17 @@ struct EquipmentRow: View {
         case "靴子": return "shoe"
         case "饰品": return "sparkles"
         default: return "questionmark"
+        }
+    }
+
+    private var equipSlot: EquipSlot? {
+        switch slot {
+        case "武器": return .weapon
+        case "护甲": return .armor
+        case "头盔": return .helmet
+        case "靴子": return .boots
+        case "饰品": return .accessory
+        default: return nil
         }
     }
 }

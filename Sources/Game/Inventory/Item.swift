@@ -9,10 +9,10 @@ enum Rarity: String, Codable, CaseIterable, Comparable {
 
     var color: String {
         switch self {
-        case .common: return "#FFFFFF"
-        case .uncommon: return "#1EFF00"
-        case .rare: return "#0070FF"
-        case .legendary: return "#FF8000"
+        case .common: return "#E4E4E4"
+        case .uncommon: return "#54FC0C"
+        case .rare: return "#2F8BFC"
+        case .legendary: return "#FC9C0C"
         }
     }
 
@@ -56,6 +56,34 @@ struct ItemStats: Codable, Equatable, Hashable {
     var bonusSPD: Int = 0
     var bonusCritRate: Double = 0
     var bonusCritDamage: Double = 0
+
+    var equipmentScore: Double {
+        Double(bonusHP)
+        + Double(bonusATK) * 5
+        + Double(bonusDEF) * 3
+        + Double(bonusSPD) * 2
+        + bonusCritRate * 100
+        + bonusCritDamage * 50
+    }
+}
+
+extension Item {
+    var equipmentScore: Double {
+        stats.equipmentScore + Double(rarity.rank) * 0.01
+    }
+
+    func isBetterEquipment(than current: Item?) -> Bool {
+        guard slot != nil else { return false }
+        guard let current else { return true }
+        guard current.slot == slot else { return true }
+        return equipmentScore > current.equipmentScore
+    }
+}
+
+extension Rarity {
+    var rank: Int {
+        Self.allCases.firstIndex(of: self) ?? 0
+    }
 }
 
 /// 装备栏
@@ -75,6 +103,16 @@ struct EquipmentLoadout: Codable {
 
     private var equippedItems: [Item] {
         [weapon, armor, helmet, boots, accessory].compactMap { $0 }
+    }
+
+    func item(in slot: EquipSlot) -> Item? {
+        switch slot {
+        case .weapon: return weapon
+        case .armor: return armor
+        case .helmet: return helmet
+        case .boots: return boots
+        case .accessory: return accessory
+        }
     }
 
     private func sum<T: AdditiveArithmetic>(_ keyPath: KeyPath<ItemStats, T>) -> T {

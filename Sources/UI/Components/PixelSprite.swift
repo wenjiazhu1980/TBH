@@ -12,6 +12,7 @@ struct PixelSprite: View {
                 .resizable()
                 .interpolation(.none)  // 关键：禁用插值保持像素锐利
                 .antialiased(false)
+                .aspectRatio(contentMode: .fit)
                 .frame(width: size.width, height: size.height)
         } else {
             // 占位符
@@ -32,20 +33,7 @@ struct BattleSprite: View {
     var size: CGSize = CGSize(width: 64, height: 64)
 
     var body: some View {
-        PixelSprite(imageName: MonsterArt.spriteName(for: monsterID), size: size)
-    }
-}
-
-/// 怪物 ID → 素材名映射
-enum MonsterArt {
-    static func spriteName(for monsterID: String) -> String {
-        switch monsterID {
-        case "skeleton", "zombie", "golem", "dragon_whelp":
-            return "monster_skeleton_boss"
-        default:
-            // slime/goblin/wolf/bat/spider 暂用史莱姆占位
-            return "monster_slime_red"
-        }
+        PixelSprite(imageName: GameArt.monsterSpriteName(for: monsterID), size: size)
     }
 }
 

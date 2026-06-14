@@ -10,8 +10,17 @@ struct BattleView: View {
                 VStack(spacing: 12) {
                     // 战斗场景 — 像素精灵
                     BattleSceneView(battle: battle)
-                        .frame(height: 160)
-                        .background(Color.black.opacity(0.3))
+                        .frame(height: 176)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color.black.opacity(0.34),
+                                    Color(red: 0.10, green: 0.11, blue: 0.15).opacity(0.46)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                         .cornerRadius(8)
 
                     // 战斗日志
@@ -58,59 +67,141 @@ struct BattleView: View {
 /// 战斗场景 — 像素风动画
 struct BattleSceneView: View {
     @ObservedObject var battle: Battle
+    @State private var heroStrike = false
+    @State private var monsterStrike = false
+    @State private var heroHit = false
+    @State private var monsterHit = false
 
     var body: some View {
-        HStack(spacing: 40) {
-            // 英雄
-            VStack(spacing: 4) {
-                PixelSprite(imageName: "battle_knight", size: CGSize(width: 80, height: 100))
+        ZStack {
+            HStack(spacing: 10) {
+                CombatantView(
+                    name: battle.hero.heroClass.rawValue,
+                    imageName: GameArt.heroSpriteName(for: battle.hero.heroClass),
+                    hp: battle.heroHP,
+                    maxHP: battle.hero.maxHP,
+                    tint: .green,
+                    spriteSize: CGSize(width: 96, height: 116),
+                    isHero: true,
+                    isStriking: heroStrike,
+                    isHit: heroHit
+                )
 
-                // 英雄血条
-                VStack(spacing: 1) {
-                    Text("HP")
-                        .font(.system(size: 7, design: .monospaced))
-                        .foregroundColor(.green)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Rectangle().fill(Color.green.opacity(0.2))
-                            Rectangle()
-                                .fill(Color.green)
-                                .frame(width: geo.size.width * CGFloat(battle.heroHP) / CGFloat(max(battle.hero.maxHP, 1)))
-                        }
+                VStack(spacing: 2) {
+                    Text("VS")
+                        .font(.system(size: 18, weight: .black, design: .monospaced))
+                        .foregroundColor(.orange)
+                    if let last = battle.log.last {
+                        Text(last.isCrit ? "CRIT" : "\(last.damage)")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(last.isCrit ? .yellow : .secondary)
+                            .frame(height: 10)
+                    } else {
+                        Text("")
+                            .frame(height: 10)
                     }
-                    .frame(width: 60, height: 4)
-                    .cornerRadius(1)
                 }
+                .frame(width: 38)
+
+                CombatantView(
+                    name: battle.monster.name,
+                    imageName: GameArt.monsterSpriteName(for: battle.monster.id),
+                    hp: battle.monsterHP,
+                    maxHP: battle.monster.hp,
+                    tint: .red,
+                    spriteSize: CGSize(width: 96, height: 116),
+                    isHero: false,
+                    isStriking: monsterStrike,
+                    isHit: monsterHit
+                )
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+        }
+        .onChange(of: battle.log.count) { _ in
+            playHitAnimation()
+        }
+    }
 
-            // VS
-            Text("VS")
-                .font(.system(size: 16, weight: .black, design: .monospaced))
-                .foregroundColor(.orange)
+    private func playHitAnimation() {
+        guard let attacker = battle.log.last?.attacker else { return }
 
-            // 怪物
-            VStack(spacing: 4) {
-                BattleSprite(monsterID: battle.monster.id, size: CGSize(width: 80, height: 100))
+        withAnimation(.easeOut(duration: 0.10)) {
+            heroStrike = attacker == .hero
+            monsterStrike = attacker == .monster
+            heroHit = attacker == .monster
+            monsterHit = attacker == .hero
+        }
 
-                // 怪物血条
-                VStack(spacing: 1) {
-                    Text("HP")
-                        .font(.system(size: 7, design: .monospaced))
-                        .foregroundColor(.red)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Rectangle().fill(Color.red.opacity(0.2))
-                            Rectangle()
-                                .fill(Color.red)
-                                .frame(width: geo.size.width * CGFloat(battle.monsterHP) / CGFloat(max(battle.monster.hp, 1)))
-                        }
-                    }
-                    .frame(width: 60, height: 4)
-                    .cornerRadius(1)
-                }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.62)) {
+                heroStrike = false
+                monsterStrike = false
+                heroHit = false
+                monsterHit = false
             }
         }
-        .padding()
+    }
+}
+
+struct CombatantView: View {
+    let name: String
+    let imageName: String
+    let hp: Int
+    let maxHP: Int
+    let tint: Color
+    let spriteSize: CGSize
+    let isHero: Bool
+    let isStriking: Bool
+    let isHit: Bool
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ZStack(alignment: .center) {
+                Ellipse()
+                    .fill(Color.black.opacity(0.26))
+                    .frame(width: 74, height: 14)
+                    .offset(y: 48)
+
+                PixelSprite(imageName: imageName, size: spriteSize)
+                    .scaleEffect(isStriking ? 1.08 : 1.0, anchor: .center)
+                    .offset(x: isStriking ? (isHero ? 12 : -12) : 0)
+                    .brightness(isHit ? 0.28 : 0)
+                    .saturation(isHit ? 0.75 : 1)
+
+                if isHit {
+                    Image(systemName: "burst.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.yellow)
+                        .shadow(color: .orange, radius: 5)
+                        .offset(x: isHero ? 24 : -24, y: -22)
+                }
+            }
+            .frame(width: 104, height: 118)
+
+            Text(name)
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .frame(width: 88)
+
+            VStack(spacing: 2) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(tint.opacity(0.22))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(tint)
+                            .frame(width: geo.size.width * CGFloat(hp) / CGFloat(max(maxHP, 1)))
+                    }
+                }
+                .frame(width: 78, height: 5)
+
+                Text("\(hp)/\(maxHP)")
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+        }
     }
 }
 

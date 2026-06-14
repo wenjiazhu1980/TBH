@@ -27,6 +27,29 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
 
+                GroupBox("自动化") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(
+                            "自动装备最强物品",
+                            isOn: Binding(
+                                get: { gameEngine.autoEquipBestItems },
+                                set: { gameEngine.setAutoEquipBestItems($0) }
+                            )
+                        )
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+
+                        Button("立即装备最强") {
+                            gameEngine.equipBestItemsFromInventory()
+                            gameEngine.save()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .font(.system(size: 11))
+                    .padding(.vertical, 4)
+                }
+
                 GroupBox("统计") {
                     VStack(alignment: .leading, spacing: 6) {
                         StatRow(label: "击杀怪物", value: "\(gameEngine.statistics.monstersKilled)")

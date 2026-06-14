@@ -151,6 +151,15 @@ enum SelfTest {
         engine.equipItem(junk)
         expect(engine.inventory.items.count == 2, "non-equippable equip is a no-op")
 
+        let weakArmor = Item(id: "a1", name: "布甲", rarity: .common, slot: .armor, stats: ItemStats(bonusDEF: 2), description: "")
+        let strongArmor = Item(id: "a2", name: "钢甲", rarity: .rare, slot: .armor, stats: ItemStats(bonusDEF: 8), description: "")
+        engine.inventory.add(weakArmor)
+        engine.inventory.add(strongArmor)
+        engine.setAutoEquipBestItems(true)
+        expect(engine.autoEquipBestItems, "auto equip toggle is enabled")
+        expect(engine.hero.equipment.armor?.id == "a2", "auto equip picks strongest item per slot")
+        expect(engine.inventory.items.contains(weakArmor), "weaker item stays in inventory")
+
         engine.hero.gainGold(999)
         engine.resetGame()
         expect(engine.hero.gold == 0 && engine.hero.level == 1 && engine.inventory.items.isEmpty, "resetGame clears state")
@@ -163,9 +172,10 @@ enum SelfTest {
         let manager = SaveManager(directory: tempDir)
         let hero = Hero()
         hero.gainGold(123)
-        manager.save(SaveData(hero: hero, inventory: Inventory(), progress: ProgressTracker(), statistics: GameStatistics(), timestamp: Date()))
+        manager.save(SaveData(hero: hero, inventory: Inventory(), progress: ProgressTracker(), statistics: GameStatistics(), autoEquipBestItems: true, timestamp: Date()))
         let loaded = manager.load()
         expect(loaded?.hero.gold == 123, "save/load round trip preserves data")
+        expect(loaded?.autoEquipBestItems == true, "save/load round trip preserves auto equip toggle")
     }
 }
 #endif
