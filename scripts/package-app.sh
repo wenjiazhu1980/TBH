@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 OUT_DIR="${1:-dist}"
 APP_NAME="TBH"
 BUNDLE_ID="com.tbh.game"
-VERSION="0.1.2"
+VERSION="0.1.3"
 RESOURCE_BUNDLE="TBH-macOS_TBH.bundle"  # SPM 资源 bundle 命名：<Package>_<Target>
 ICON_FILE="TBH.icns"
 
