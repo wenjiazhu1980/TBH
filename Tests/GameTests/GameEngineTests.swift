@@ -202,6 +202,8 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(output.rarity == .uncommon)
         #expect(output.equipmentType == .sword)
         #expect(output.itemLevel == 12)
+        #expect(output.name == "Rapier")
+        #expect(output.description.contains("来源装备 300003"))
         #expect(engine.inventory.items.count == 2)
         #expect(engine.inventory.items.contains(locked))
         #expect(engine.inventory.items.contains(output))

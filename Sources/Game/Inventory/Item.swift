@@ -237,6 +237,14 @@ struct SourceGearTypeEntry: Equatable, Identifiable {
     func rarityCount(for rarity: Rarity) -> Int {
         rarityCounts[rarity] ?? 0
     }
+
+    func progression(for itemLevel: Int) -> SourceGearLevelProgression? {
+        let clampedLevel = max(1, itemLevel)
+        let orderedProgressions = progressions.sorted { lhs, rhs in
+            lhs.itemLevel < rhs.itemLevel
+        }
+        return orderedProgressions.last { $0.itemLevel <= clampedLevel } ?? orderedProgressions.first
+    }
 }
 
 enum SourceItemCatalog {
@@ -320,6 +328,10 @@ enum SourceItemCatalog {
     static var missingEquipmentTypes: [EquipmentType] {
         let covered = Set(allGearTypes.map(\.equipmentType))
         return EquipmentType.allCases.filter { !covered.contains($0) }
+    }
+
+    static func progression(for equipmentType: EquipmentType, itemLevel: Int) -> SourceGearLevelProgression? {
+        byType[equipmentType]?.progression(for: itemLevel)
     }
 
     private static func parseSourceGearTypeTSV() -> [SourceGearTypeEntry] {
@@ -763,6 +775,7 @@ struct SynthesisPreview: Equatable {
     let lockedInputCount: Int
     let selectedInputCount: Int
     let outputItemLevel: Int?
+    let outputSourceProgression: SourceGearLevelProgression?
 
     var isReady: Bool {
         outputRarity != nil && selectedInputCount == Rarity.synthesisInputCount
@@ -780,6 +793,12 @@ struct SynthesisPreview: Equatable {
         let outputLevel = selectedInputs.count == Rarity.synthesisInputCount
             ? selectedInputs.map(\.itemLevel).max()
             : nil
+        let outputType = selectedInputs.count == Rarity.synthesisInputCount
+            ? selectedInputs.compactMap(\.equipmentType).first
+            : nil
+        let outputProgression = outputLevel.flatMap { level in
+            outputType.flatMap { SourceItemCatalog.progression(for: $0, itemLevel: level) }
+        }
 
         return SynthesisPreview(
             inputRarity: rarity,
@@ -787,7 +806,8 @@ struct SynthesisPreview: Equatable {
             unlockedInputCount: unlockedInputs.count,
             lockedInputCount: lockedInputCount,
             selectedInputCount: selectedInputs.count,
-            outputItemLevel: outputLevel
+            outputItemLevel: outputLevel,
+            outputSourceProgression: outputProgression
         )
     }
 

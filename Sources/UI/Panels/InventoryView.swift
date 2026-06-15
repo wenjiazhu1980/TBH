@@ -353,6 +353,11 @@ private struct SynthesisPreviewView: View {
                         Label("Lv.\(outputItemLevel)", systemImage: "scope")
                             .foregroundColor(.secondary)
                     }
+                    if let source = preview.outputSourceProgression {
+                        Label("\(source.name) #\(source.id)", systemImage: "tag.fill")
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
                     if preview.lockedInputCount > 0 {
                         Label("锁定 \(preview.lockedInputCount)", systemImage: "lock.fill")
                             .foregroundColor(.secondary)

@@ -90,21 +90,9 @@ struct LootTable {
         let baseDEF = Int(Double(Int.random(in: 2...10)) * multiplier * levelMultiplier)
         let baseHP = Int(Double(Int.random(in: 10...50)) * multiplier * levelMultiplier)
 
-        let namePrefix: String
-        switch rarity {
-        case .common: namePrefix = ["旧", "普通的", "简陋的"].randomElement()!
-        case .uncommon: namePrefix = ["精良的", "坚固的", "锋利的"].randomElement()!
-        case .rare: namePrefix = ["魔法", "附魔", "秘银"].randomElement()!
-        case .legendary: namePrefix = ["远古", "龙裔", "神圣"].randomElement()!
-        case .immortal: namePrefix = ["不朽", "赤红", "永恒"].randomElement()!
-        case .arcana: namePrefix = ["奥秘", "秘法", "星界"].randomElement()!
-        case .beyond: namePrefix = ["超越", "虚空", "深渊"].randomElement()!
-        case .celestial: namePrefix = ["天界", "辉耀", "星辰"].randomElement()!
-        case .divine: namePrefix = ["神圣", "审判", "光辉"].randomElement()!
-        case .cosmic: namePrefix = ["宇宙", "混沌", "创世"].randomElement()!
-        }
-
-        let slotName = type.localizedName
+        let sourceProgression = SourceItemCatalog.progression(for: type, itemLevel: itemLevel)
+        let sourceName = sourceProgression?.name ?? type.localizedName
+        let sourceIDLine = sourceProgression.map { " · 来源装备 \($0.id)" } ?? ""
 
         let stats: ItemStats
         switch type.category {
@@ -148,11 +136,11 @@ struct LootTable {
 
         return Item(
             id: UUID().uuidString,
-            name: "\(namePrefix)\(slotName)",
+            name: sourceName,
             rarity: rarity,
             slot: slot,
             stats: stats,
-            description: "Lv.\(itemLevel) \(rarity.rawValue)品质的\(type.typeLine)",
+            description: "Lv.\(itemLevel) \(rarity.rawValue)品质的\(type.typeLine)\(sourceIDLine)",
             itemLevel: itemLevel,
             equipmentType: type
         )

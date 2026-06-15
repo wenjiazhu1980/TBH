@@ -48,11 +48,13 @@ import Foundation
         #expect(preview.lockedInputCount == 1)
         #expect(preview.selectedInputCount == 9)
         #expect(preview.outputItemLevel == 12)
+        #expect(preview.outputSourceProgression == SourceGearLevelProgression(id: "300003", itemLevel: 10, name: "Rapier"))
         #expect(preview.sourceVariantBoundary == "跳阶/降级概率未核实")
 
         let cosmicPreview = SynthesisPreview.make(for: .cosmic, in: inputs)
         #expect(!cosmicPreview.isReady)
         #expect(cosmicPreview.outputRarity == nil)
+        #expect(cosmicPreview.outputSourceProgression == nil)
         #expect(cosmicPreview.sourceVariantBoundary == nil)
     }
 
@@ -89,6 +91,8 @@ import Foundation
         #expect(SourceItemCatalog.byType[.sword]?.gearEntryCount == 292)
         #expect(SourceItemCatalog.byType[.sword]?.progressions.first == SourceGearLevelProgression(id: "300001", itemLevel: 1, name: "Long Sword"))
         #expect(SourceItemCatalog.byType[.sword]?.progressions.last == SourceGearLevelProgression(id: "300020", itemLevel: 100, name: "Radiant Sword"))
+        #expect(SourceItemCatalog.progression(for: .scepter, itemLevel: 12) == SourceGearLevelProgression(id: "330003", itemLevel: 10, name: "Blessed Scepter"))
+        #expect(SourceItemCatalog.progression(for: .amulet, itemLevel: 100) == SourceGearLevelProgression(id: "601191", itemLevel: 90, name: "Abyss Amulet"))
         #expect(SourceItemCatalog.byType[.amulet]?.gearEntryCount == 272)
         #expect(SourceItemCatalog.byType[.amulet]?.rarityCount(for: .common) == 0)
         #expect(SourceItemCatalog.byType[.earring]?.sourceTitle == "Earing")
@@ -230,7 +234,9 @@ import Foundation
         #expect(item.equipmentType == .scepter)
         #expect(item.slot == .weapon)
         #expect(item.itemLevel == 12)
+        #expect(item.name == "Blessed Scepter")
         #expect(item.description.contains("Scepter"))
+        #expect(item.description.contains("来源装备 330003"))
         #expect(GameArt.itemIconName(for: item) == GameArt.itemIconName(for: EquipmentType.scepter))
     }
 }

@@ -3437,13 +3437,15 @@ enum SelfTest {
                 synthesisPreview.lockedInputCount == 1 &&
                 synthesisPreview.selectedInputCount == 9 &&
                 synthesisPreview.outputItemLevel == 12 &&
+                synthesisPreview.outputSourceProgression == SourceGearLevelProgression(id: "300003", itemLevel: 10, name: "Rapier") &&
                 synthesisPreview.sourceVariantBoundary == "跳阶/降级概率未核实",
-            "Synthesis preview exposes unlocked inputs, locked exclusions and checked output level boundary"
+            "Synthesis preview exposes unlocked inputs, locked exclusions, checked output level and source base gear identity"
         )
         let cosmicPreview = SynthesisPreview.make(for: .cosmic, in: previewInputs)
         expect(
             !cosmicPreview.isReady &&
                 cosmicPreview.outputRarity == nil &&
+                cosmicPreview.outputSourceProgression == nil &&
                 cosmicPreview.sourceVariantBoundary == nil,
             "Synthesis preview does not fabricate a Cosmic output"
         )
@@ -3477,6 +3479,11 @@ enum SelfTest {
             SourceItemCatalog.byType[.sword]?.progressions.first == SourceGearLevelProgression(id: "300001", itemLevel: 1, name: "Long Sword") &&
                 SourceItemCatalog.byType[.sword]?.progressions.last == SourceGearLevelProgression(id: "300020", itemLevel: 100, name: "Radiant Sword"),
             "source item catalog preserves checked Sword level IDs"
+        )
+        expect(
+            SourceItemCatalog.progression(for: .scepter, itemLevel: 12) == SourceGearLevelProgression(id: "330003", itemLevel: 10, name: "Blessed Scepter") &&
+                SourceItemCatalog.progression(for: .amulet, itemLevel: 100) == SourceGearLevelProgression(id: "601191", itemLevel: 90, name: "Abyss Amulet"),
+            "source item catalog selects the closest checked base gear progression at or below item level"
         )
         expect(
             SourceItemCatalog.byType[.amulet]?.gearEntryCount == 272 &&
@@ -3574,8 +3581,10 @@ enum SelfTest {
             generated.equipmentType == .scepter &&
                 generated.slot == .weapon &&
                 generated.itemLevel == 12 &&
-                generated.description.contains("Scepter"),
-            "loot generation preserves concrete equipment type and item level"
+                generated.name == "Blessed Scepter" &&
+                generated.description.contains("Scepter") &&
+                generated.description.contains("来源装备 330003"),
+            "loot generation preserves concrete equipment type, item level and checked source base gear identity"
         )
         expect(GameArt.itemIconName(for: generated) == GameArt.itemIconName(for: EquipmentType.scepter), "loot item icon follows concrete equipment type")
     }
@@ -3731,12 +3740,14 @@ enum SelfTest {
         )
         let synthesized = synthesisEngine.synthesizeItems(rarity: .common)
         expect(
-            synthesized?.rarity == .uncommon &&
+                synthesized?.rarity == .uncommon &&
                 synthesized?.equipmentType == .sword &&
                 synthesized?.itemLevel == 12 &&
+                synthesized?.name == "Rapier" &&
+                synthesized?.description.contains("来源装备 300003") == true &&
                 synthesisEngine.inventory.items.count == 2 &&
                 synthesisEngine.inventory.items.contains { $0.id == "synthesis-locked" },
-            "Synthesis consumes nine unlocked same-rarity items and creates the next rarity tier"
+            "Synthesis consumes nine unlocked same-rarity items and creates the next rarity tier with checked source base gear identity"
         )
         expect(
             synthesisEngine.synthesizeItems(rarity: .cosmic) == nil,
