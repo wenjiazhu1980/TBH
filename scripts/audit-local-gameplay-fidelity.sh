@@ -11,7 +11,9 @@ item_swift="${ITEM_SWIFT:-Sources/Game/Inventory/Item.swift}"
 loot_table_swift="${LOOT_TABLE_SWIFT:-Sources/Game/Inventory/LootTable.swift}"
 battle_swift="${BATTLE_SWIFT:-Sources/Game/Combat/Battle.swift}"
 battle_view_swift="${BATTLE_VIEW_SWIFT:-Sources/UI/Panels/BattleView.swift}"
+battle_scene_snapshot_swift="${BATTLE_SCENE_SNAPSHOT_SWIFT:-Sources/App/BattleSceneSnapshot.swift}"
 self_test_swift="${SELF_TEST_SWIFT:-Sources/App/SelfTest.swift}"
+battle_scene_audit_sh="${BATTLE_SCENE_AUDIT_SH:-scripts/audit-local-battle-scene.sh}"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -22,7 +24,7 @@ require_tool() {
 
 require_tool python3
 
-python3 - "$hero_swift" "$skills_swift" "$rune_swift" "$stage_swift" "$difficulty_swift" "$chapter_swift" "$item_swift" "$loot_table_swift" "$battle_swift" "$battle_view_swift" "$self_test_swift" <<'PY'
+python3 - "$hero_swift" "$skills_swift" "$rune_swift" "$stage_swift" "$difficulty_swift" "$chapter_swift" "$item_swift" "$loot_table_swift" "$battle_swift" "$battle_view_swift" "$battle_scene_snapshot_swift" "$self_test_swift" "$battle_scene_audit_sh" <<'PY'
 import re
 import sys
 from collections import Counter
@@ -38,9 +40,25 @@ item_path = Path(sys.argv[7])
 loot_table_path = Path(sys.argv[8])
 battle_path = Path(sys.argv[9])
 battle_view_path = Path(sys.argv[10])
-self_test_path = Path(sys.argv[11])
+battle_scene_snapshot_path = Path(sys.argv[11])
+self_test_path = Path(sys.argv[12])
+battle_scene_audit_path = Path(sys.argv[13])
 
-for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_path, battle_view_path, self_test_path]:
+for path in [
+    hero_path,
+    skills_path,
+    rune_path,
+    stage_path,
+    difficulty_path,
+    chapter_path,
+    item_path,
+    loot_table_path,
+    battle_path,
+    battle_view_path,
+    battle_scene_snapshot_path,
+    self_test_path,
+    battle_scene_audit_path,
+]:
     if not path.is_file():
         print(f"required source file does not exist: {path}", file=sys.stderr)
         sys.exit(2)
@@ -55,7 +73,9 @@ item_source = item_path.read_text(encoding="utf-8")
 loot_table_source = loot_table_path.read_text(encoding="utf-8")
 battle_source = battle_path.read_text(encoding="utf-8")
 battle_view_source = battle_view_path.read_text(encoding="utf-8")
+battle_scene_snapshot_source = battle_scene_snapshot_path.read_text(encoding="utf-8")
 self_test_source = self_test_path.read_text(encoding="utf-8")
+battle_scene_audit_source = battle_scene_audit_path.read_text(encoding="utf-8")
 
 ORIGINAL = {
     "hero_classes": 6,
@@ -508,6 +528,14 @@ source_chaos_damage_metadata = (
     and "source chaos damage metadata exposes a chaos impact cue" in self_test_source
     and "case .chaosBurst" in battle_view_source
 )
+source_chaos_battle_scene_audit = (
+    "case chaosBurst" in battle_scene_snapshot_source
+    and "case .chaosBurst" in battle_scene_snapshot_source
+    and "damageElement: .chaos" in battle_scene_snapshot_source
+    and "--render-battle-scene-fixture chaosBurst" in battle_scene_audit_source
+    and "damage_chaos_pixels" in battle_scene_audit_source
+    and "is_impact_chaos" in battle_scene_audit_source
+)
 if not source_progression_runtime_selector:
     issues.append("SourceItemCatalog must expose runtime source gear progression selection")
 if not loot_uses_source_progression_identity:
@@ -524,6 +552,8 @@ if not source_base_attack_metadata:
     issues.append("Battle must apply source base attack element/delivery metadata to hero and support attack logs")
 if not source_chaos_damage_metadata:
     issues.append("Runtime skill metadata must preserve checked source Chaos damage rows")
+if not source_chaos_battle_scene_audit:
+    issues.append("Local battle-scene audit must render and gate the checked source Chaos impact cue")
 
 source_gear_rows = tsv_lines(item_source, "sourceGearTypeTSV")
 source_gear_entries = []
@@ -792,6 +822,7 @@ print("support_sustained_skill_runtime=" + ("enabled" if support_sustained_skill
 print("support_attack_count_skill_runtime=" + ("enabled" if support_attack_count_skill_runtime else "missing"))
 print("source_base_attack_metadata=" + ("enabled" if source_base_attack_metadata else "missing"))
 print("source_chaos_damage_metadata=" + ("enabled" if source_chaos_damage_metadata else "missing"))
+print("source_chaos_battle_scene_audit=" + ("enabled" if source_chaos_battle_scene_audit else "missing"))
 print("source_gear_rarity_counts=" + ",".join(f"{key}:{source_gear_rarity_counts[key]}" for key in sorted(source_gear_rarity_counts)))
 print("source_material_category_counts=" + ",".join(f"{key}:{source_material_category_counts[key]}" for key in sorted(source_material_category_counts)))
 print("source_material_rarity_counts=" + ",".join(f"{key}:{source_material_rarity_counts[key]}" for key in sorted(source_material_rarity_counts)))
