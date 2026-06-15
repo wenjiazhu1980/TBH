@@ -456,10 +456,14 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         engine.progress.currentChapterIndex = 2
         engine.progress.currentDifficultyIndex = 3
         engine.progress.currentStageIndex = 8
+        engine.activeSkillLoadouts.setSkills(["10601"], for: .knight)
         engine.setHeroClass(.knight)
-        engine.setActiveSkill("10601", for: .knight, slotIndex: 0)
 
         let firstBattle = try #require(engine.currentBattle)
+        let firstBattleSkillIDs = firstBattle.activeSkillLoadouts
+            .activeSkills(for: .knight, heroLevel: engine.hero.level, slotCount: 1)
+            .map(\.id)
+        #expect(firstBattleSkillIDs == ["10601"])
         engine.hero.takeDamage(engine.hero.currentHP - 1)
         firstBattle.heroHP = engine.hero.currentHP
         firstBattle.update(deltaTime: 1)
