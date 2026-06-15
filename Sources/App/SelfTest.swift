@@ -1300,6 +1300,58 @@ enum SelfTest {
             "battle log entries infer element and delivery metadata for visual combat feedback"
         )
 
+        let sourceBaseAttackSorcerer = Hero()
+        sourceBaseAttackSorcerer.changeClass(to: .sorcerer)
+        let baseAttackMonster = Monster(
+            id: "base-attack-metadata",
+            name: "基础攻击元数据训练木桩",
+            hp: 1_000_000,
+            atk: 1,
+            def: 0,
+            spd: 1,
+            critRate: 0,
+            xpReward: 0,
+            goldReward: 0,
+            lootTableID: "none"
+        )
+        let sorcererBattle = Battle(
+            hero: sourceBaseAttackSorcerer,
+            monster: baseAttackMonster,
+            party: HeroParty(primaryClass: .sorcerer),
+            activeSkillSlotCount: 1
+        )
+        sorcererBattle.update(deltaTime: 1)
+        let sorcererBaseAttack = sorcererBattle.log.first {
+            $0.attacker == .hero && $0.skillName == nil && $0.kind == .damage
+        }
+        expect(
+            sorcererBaseAttack?.damageElement == .fire &&
+                sorcererBaseAttack?.delivery == .projectile &&
+                BattleImpactCue.visible(for: sorcererBaseAttack) == .fireBurst &&
+                BattleTrajectoryCue.visible(for: sorcererBaseAttack) == .projectile,
+            "source-backed Sorcerer base attacks expose fire projectile visual metadata"
+        )
+
+        let knightSupportHost = Hero()
+        var rangerSupportParty = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        rangerSupportParty.setHeroClass(.ranger, atSlot: 1)
+        let rangerSupportBattle = Battle(
+            hero: knightSupportHost,
+            monster: baseAttackMonster,
+            party: rangerSupportParty,
+            activeSkillSlotCount: 1
+        )
+        rangerSupportBattle.update(deltaTime: 1)
+        let rangerBaseAttack = rangerSupportBattle.log.first {
+            $0.attacker == .support(.ranger) && $0.skillName == nil && $0.kind == .damage
+        }
+        expect(
+            rangerBaseAttack?.damageElement == .physical &&
+                rangerBaseAttack?.delivery == .projectile &&
+                BattleTrajectoryCue.visible(for: rangerBaseAttack) == .projectile,
+            "source-backed support Ranger base attacks expose physical projectile visual metadata"
+        )
+
         let knight = Hero()
         let trainingMonster = Monster(
             id: "training-skill",
@@ -2914,6 +2966,22 @@ enum SelfTest {
         expect(
             SourceSkillCatalog.runtimeModeledSkills.count == 36,
             "source skill catalog distinguishes runtime-modeled skills from unimplemented source rows"
+        )
+        let expectedBaseAttacks: [(HeroClass, String, SkillDamageElement, SkillDelivery)] = [
+            (.knight, "10001", .physical, .melee),
+            (.ranger, "20001", .physical, .projectile),
+            (.sorcerer, "30001", .fire, .projectile),
+            (.priest, "40001", .physical, .melee),
+            (.hunter, "50001", .physical, .projectile),
+            (.slayer, "60001", .physical, .melee)
+        ]
+        expect(
+            expectedBaseAttacks.allSatisfy { heroClass, sourceID, damageElement, delivery in
+                HeroSkills.baseAttackSourceSkill(for: heroClass)?.id == sourceID &&
+                    HeroSkills.baseAttackDamageElement(for: heroClass) == damageElement &&
+                    HeroSkills.baseAttackDelivery(for: heroClass) == delivery
+            },
+            "source base attack rows resolve to runtime element and delivery metadata"
         )
         expect(SourceSkillCatalog.skill(id: "999999") == nil, "unknown source skill IDs do not resolve")
     }

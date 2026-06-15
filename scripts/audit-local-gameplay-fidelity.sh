@@ -489,6 +489,18 @@ support_attack_count_skill_runtime = (
     and 'skill.id == "20101"' in battle_source
     and 'skill.id == "50601"' in battle_source
 )
+source_base_attack_metadata = (
+    "baseAttackSourceSkill(for heroClass: HeroClass)" in skills_source
+    and "baseAttackDamageElement(for heroClass: HeroClass)" in skills_source
+    and "baseAttackDelivery(for heroClass: HeroClass)" in skills_source
+    and 'return "30001"' in skills_source
+    and "HeroSkills.baseAttackDamageElement(for: primaryHeroClass)" in battle_source
+    and "HeroSkills.baseAttackDelivery(for: primaryHeroClass)" in battle_source
+    and "HeroSkills.baseAttackDamageElement(for: member.heroClass)" in battle_source
+    and "HeroSkills.baseAttackDelivery(for: member.heroClass)" in battle_source
+    and "source base attack rows resolve to runtime element and delivery metadata" in self_test_source
+    and "source-backed Sorcerer base attacks expose fire projectile visual metadata" in self_test_source
+)
 if not source_progression_runtime_selector:
     issues.append("SourceItemCatalog must expose runtime source gear progression selection")
 if not loot_uses_source_progression_identity:
@@ -501,6 +513,8 @@ if not support_sustained_skill_runtime:
     issues.append("Battle must keep support-member sustained summon/range skill state for Hydra/Snowstorm/Turret")
 if not support_attack_count_skill_runtime:
     issues.append("Battle must keep support-member attack-count skill state for modeled BASEATTACK_COUNT skills")
+if not source_base_attack_metadata:
+    issues.append("Battle must apply source base attack element/delivery metadata to hero and support attack logs")
 
 source_gear_rows = tsv_lines(item_source, "sourceGearTypeTSV")
 source_gear_entries = []
@@ -767,6 +781,7 @@ print("synthesis_preview_source_progression=" + ("enabled" if synthesis_preview_
 print("legacy_item_name_inference=" + ("enabled" if legacy_item_name_inference else "missing"))
 print("support_sustained_skill_runtime=" + ("enabled" if support_sustained_skill_runtime else "missing"))
 print("support_attack_count_skill_runtime=" + ("enabled" if support_attack_count_skill_runtime else "missing"))
+print("source_base_attack_metadata=" + ("enabled" if source_base_attack_metadata else "missing"))
 print("source_gear_rarity_counts=" + ",".join(f"{key}:{source_gear_rarity_counts[key]}" for key in sorted(source_gear_rarity_counts)))
 print("source_material_category_counts=" + ",".join(f"{key}:{source_material_category_counts[key]}" for key in sorted(source_material_category_counts)))
 print("source_material_rarity_counts=" + ",".join(f"{key}:{source_material_rarity_counts[key]}" for key in sorted(source_material_rarity_counts)))

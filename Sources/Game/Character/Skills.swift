@@ -161,6 +161,54 @@ struct SourceSkill: Identifiable, Codable, Equatable {
     var isRuntimeModeled: Bool {
         SourceSkillCatalog.runtimeModeledSkillIDs.contains(id)
     }
+
+    var runtimeDamageElement: SkillDamageElement {
+        switch damageType.lowercased() {
+        case "physical":
+            return .physical
+        case "fire":
+            return .fire
+        case "cold":
+            return .cold
+        case "lightning":
+            return .lightning
+        default:
+            return .none
+        }
+    }
+
+    var runtimeDelivery: SkillDelivery {
+        let parts = delivery
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        let containsProjectile = parts.contains("projectile")
+        let containsMelee = parts.contains("melee")
+        let containsAOE = parts.contains("aoe")
+        let containsSummon = parts.contains("summon")
+
+        if parts.contains("trap") {
+            return .trap
+        }
+        if containsProjectile && containsSummon {
+            return .summonProjectile
+        }
+        if containsProjectile && containsAOE {
+            return .projectileAOE
+        }
+        if containsProjectile {
+            return .projectile
+        }
+        if containsMelee && containsAOE {
+            return .meleeAOE
+        }
+        if containsMelee {
+            return .melee
+        }
+        if containsAOE {
+            return .rangeAOE
+        }
+        return .none
+    }
 }
 
 enum SourceSkillCatalog {
@@ -504,6 +552,18 @@ enum HeroSkills {
     static let defaultActiveSkillSlotCount = 1
     static let maximumModeledActiveSkillSlots = 6
 
+    static func baseAttackSourceSkill(for heroClass: HeroClass) -> SourceSkill? {
+        SourceSkillCatalog.skill(id: baseAttackSourceSkillID(for: heroClass))
+    }
+
+    static func baseAttackDamageElement(for heroClass: HeroClass) -> SkillDamageElement {
+        baseAttackSourceSkill(for: heroClass)?.runtimeDamageElement ?? .physical
+    }
+
+    static func baseAttackDelivery(for heroClass: HeroClass) -> SkillDelivery {
+        baseAttackSourceSkill(for: heroClass)?.runtimeDelivery ?? .melee
+    }
+
     static func activeLoadout(
         for heroClass: HeroClass,
         heroLevel: Int,
@@ -538,6 +598,23 @@ enum HeroSkills {
             return exact
         }
         return allSkills.first { skillName.hasPrefix($0.name) }
+    }
+
+    private static func baseAttackSourceSkillID(for heroClass: HeroClass) -> String {
+        switch heroClass {
+        case .knight:
+            return "10001"
+        case .ranger:
+            return "20001"
+        case .sorcerer:
+            return "30001"
+        case .priest:
+            return "40001"
+        case .hunter:
+            return "50001"
+        case .slayer:
+            return "60001"
+        }
     }
 
     static func named(for heroClass: HeroClass) -> [Skill] {

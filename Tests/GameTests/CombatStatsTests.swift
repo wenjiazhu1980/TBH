@@ -137,6 +137,23 @@ import Testing
         #expect(SourceSkillCatalog.runtimeModeledSkills.count == 36)
         #expect(SourceSkillCatalog.skill(id: "999999") == nil)
     }
+
+    @Test func sourceBaseAttackRowsResolveToRuntimeMetadata() {
+        let expected: [(HeroClass, String, SkillDamageElement, SkillDelivery)] = [
+            (.knight, "10001", .physical, .melee),
+            (.ranger, "20001", .physical, .projectile),
+            (.sorcerer, "30001", .fire, .projectile),
+            (.priest, "40001", .physical, .melee),
+            (.hunter, "50001", .physical, .projectile),
+            (.slayer, "60001", .physical, .melee)
+        ]
+
+        for (heroClass, sourceID, damageElement, delivery) in expected {
+            #expect(HeroSkills.baseAttackSourceSkill(for: heroClass)?.id == sourceID)
+            #expect(HeroSkills.baseAttackDamageElement(for: heroClass) == damageElement)
+            #expect(HeroSkills.baseAttackDelivery(for: heroClass) == delivery)
+        }
+    }
 }
 
 @Suite struct PassiveSkillCatalogTests {
@@ -681,6 +698,58 @@ import Testing
             entry.attacker == .support(.ranger) && entry.skillName == "散弹射击" && entry.kind == .damage
         })
         #expect(battle.monsterHP < monster.hp)
+    }
+
+    @Test func sourceBaseAttackMetadataReachesBattleLogsAndVisualCues() {
+        let sorcerer = Hero()
+        sorcerer.changeClass(to: .sorcerer)
+        let monster = Monster(
+            id: "base-attack-metadata",
+            name: "基础攻击元数据训练木桩",
+            hp: 1_000_000,
+            atk: 1,
+            def: 0,
+            spd: 1,
+            critRate: 0,
+            xpReward: 0,
+            goldReward: 0,
+            lootTableID: "none"
+        )
+        let sorcererBattle = Battle(
+            hero: sorcerer,
+            monster: monster,
+            party: HeroParty(primaryClass: .sorcerer),
+            activeSkillSlotCount: 1
+        )
+
+        sorcererBattle.update(deltaTime: 1)
+
+        let sorcererBaseAttack = sorcererBattle.log.first {
+            $0.attacker == .hero && $0.skillName == nil && $0.kind == .damage
+        }
+        #expect(sorcererBaseAttack?.damageElement == .fire)
+        #expect(sorcererBaseAttack?.delivery == .projectile)
+        #expect(BattleImpactCue.visible(for: sorcererBaseAttack) == .fireBurst)
+        #expect(BattleTrajectoryCue.visible(for: sorcererBaseAttack) == .projectile)
+
+        let knight = Hero()
+        var party = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        party.setHeroClass(.ranger, atSlot: 1)
+        let supportBattle = Battle(
+            hero: knight,
+            monster: monster,
+            party: party,
+            activeSkillSlotCount: 1
+        )
+
+        supportBattle.update(deltaTime: 1)
+
+        let rangerBaseAttack = supportBattle.log.first {
+            $0.attacker == .support(.ranger) && $0.skillName == nil && $0.kind == .damage
+        }
+        #expect(rangerBaseAttack?.damageElement == .physical)
+        #expect(rangerBaseAttack?.delivery == .projectile)
+        #expect(BattleTrajectoryCue.visible(for: rangerBaseAttack) == .projectile)
     }
 
     @Test func supportAttackCountSkillsTriggerFromSupportAttacks() {

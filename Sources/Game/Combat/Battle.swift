@@ -391,7 +391,13 @@ class Battle: ObservableObject {
                 critDamage: hero.critDamage
             )
             let defeated = damageFocusedEnemy(hit.amount)
-            log.append(BattleLogEntry(attacker: .hero, damage: hit.amount, isCrit: hit.isCrit))
+            log.append(BattleLogEntry(
+                attacker: .hero,
+                damage: hit.amount,
+                isCrit: hit.isCrit,
+                damageElement: HeroSkills.baseAttackDamageElement(for: primaryHeroClass),
+                delivery: HeroSkills.baseAttackDelivery(for: primaryHeroClass)
+            ))
             onEvent?(.heroAttack(isCrit: hit.isCrit))
             heroCooldown = heroAttackInterval
             heroBaseAttackCount += 1
@@ -654,7 +660,13 @@ class Battle: ObservableObject {
                 critDamage: 1.5
             )
             let defeated = damageFocusedEnemy(hit.amount)
-            log.append(BattleLogEntry(attacker: .support(member.heroClass), damage: hit.amount, isCrit: hit.isCrit))
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: hit.amount,
+                isCrit: hit.isCrit,
+                damageElement: HeroSkills.baseAttackDamageElement(for: member.heroClass),
+                delivery: HeroSkills.baseAttackDelivery(for: member.heroClass)
+            ))
             onEvent?(.supportAttack(isCrit: hit.isCrit))
             applied = true
             supportBaseAttackCounts[member.slotIndex, default: 0] += 1
