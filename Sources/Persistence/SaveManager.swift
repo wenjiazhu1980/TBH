@@ -4,39 +4,78 @@ import os
 /// 存档数据
 struct SaveData: Codable {
     let hero: Hero
+    let party: HeroParty
+    let runeTree: RuneTree
+    let cubeProgress: CubeProgress
+    let activeSkillLoadouts: ActiveSkillLoadouts
     let inventory: Inventory
     let progress: ProgressTracker
     let statistics: GameStatistics
     let autoEquipBestItems: Bool
+    let soundEffectsEnabled: Bool
+    let unyieldingWillConsumedStageKey: String?
     let timestamp: Date
 
     init(
         hero: Hero,
+        party: HeroParty? = nil,
+        runeTree: RuneTree? = nil,
+        cubeProgress: CubeProgress = CubeProgress(),
+        activeSkillLoadouts: ActiveSkillLoadouts = ActiveSkillLoadouts(),
         inventory: Inventory,
         progress: ProgressTracker,
         statistics: GameStatistics,
         autoEquipBestItems: Bool = false,
+        soundEffectsEnabled: Bool = true,
+        unyieldingWillConsumedStageKey: String? = nil,
         timestamp: Date
     ) {
         self.hero = hero
+        let resolvedRuneTree = runeTree ?? RuneTree(unlockedPartySlotCount: party?.activeCount ?? 1)
+        var resolvedParty = party ?? HeroParty(
+            primaryClass: hero.heroClass,
+            unlockedSlotCount: resolvedRuneTree.unlockedPartySlotCount
+        )
+        resolvedParty.setUnlockedSlotCount(resolvedRuneTree.unlockedPartySlotCount)
+        self.party = resolvedParty
+        self.runeTree = resolvedRuneTree
+        self.cubeProgress = cubeProgress
+        self.activeSkillLoadouts = activeSkillLoadouts
+        inventory.setMaxCapacity(resolvedRuneTree.inventoryCapacity)
         self.inventory = inventory
         self.progress = progress
         self.statistics = statistics
         self.autoEquipBestItems = autoEquipBestItems
+        self.soundEffectsEnabled = soundEffectsEnabled
+        self.unyieldingWillConsumedStageKey = unyieldingWillConsumedStageKey
         self.timestamp = timestamp
     }
 
     enum CodingKeys: String, CodingKey {
-        case hero, inventory, progress, statistics, autoEquipBestItems, timestamp
+        case hero, party, runeTree, cubeProgress, activeSkillLoadouts, inventory, progress, statistics, autoEquipBestItems, soundEffectsEnabled, unyieldingWillConsumedStageKey, timestamp
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         hero = try c.decode(Hero.self, forKey: .hero)
+        let decodedParty = try c.decodeIfPresent(HeroParty.self, forKey: .party)
+        runeTree = try c.decodeIfPresent(RuneTree.self, forKey: .runeTree)
+            ?? RuneTree(unlockedPartySlotCount: decodedParty?.activeCount ?? 1)
+        var resolvedParty = decodedParty ?? HeroParty(
+            primaryClass: hero.heroClass,
+            unlockedSlotCount: runeTree.unlockedPartySlotCount
+        )
+        resolvedParty.setUnlockedSlotCount(runeTree.unlockedPartySlotCount)
+        party = resolvedParty
+        cubeProgress = try c.decodeIfPresent(CubeProgress.self, forKey: .cubeProgress) ?? CubeProgress()
+        activeSkillLoadouts = try c.decodeIfPresent(ActiveSkillLoadouts.self, forKey: .activeSkillLoadouts) ?? ActiveSkillLoadouts()
         inventory = try c.decode(Inventory.self, forKey: .inventory)
+        inventory.setMaxCapacity(runeTree.inventoryCapacity)
         progress = try c.decode(ProgressTracker.self, forKey: .progress)
         statistics = try c.decode(GameStatistics.self, forKey: .statistics)
         autoEquipBestItems = try c.decodeIfPresent(Bool.self, forKey: .autoEquipBestItems) ?? false
+        soundEffectsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? true
+        unyieldingWillConsumedStageKey = try c.decodeIfPresent(String.self, forKey: .unyieldingWillConsumedStageKey)
         timestamp = try c.decode(Date.self, forKey: .timestamp)
     }
 }

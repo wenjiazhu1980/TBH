@@ -3,6 +3,11 @@ import SwiftUI
 @main
 enum Main {
     static func main() {
+        if CommandLine.arguments.contains("--render-battle-scene") ||
+            CommandLine.arguments.contains(where: { $0.hasPrefix("--render-battle-scene=") }) {
+            BattleSceneSnapshot.run(arguments: CommandLine.arguments)
+        }
+
         if CommandLine.arguments.contains("--resource-self-test") {
             ResourceSelfTest.runAll()
         }

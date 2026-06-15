@@ -1,6 +1,6 @@
 import Foundation
 
-/// 章节定义
+/// Act 定义。保留 `Chapter` 命名是为了兼容旧存档和现有调用点。
 enum Chapter: Int, CaseIterable, Codable {
     case forest = 1
     case dungeon = 2
@@ -8,9 +8,9 @@ enum Chapter: Int, CaseIterable, Codable {
 
     var name: String {
         switch self {
-        case .forest: return "迷雾森林"
-        case .dungeon: return "暗影地牢"
-        case .volcano: return "烈焰火山"
+        case .forest: return "Act 1 — 绿野与诅咒之地"
+        case .dungeon: return "Act 2 — 沙漠与古墓"
+        case .volcano: return "Act 3 — 冰封荒原与地狱"
         }
     }
 
@@ -48,24 +48,6 @@ enum Chapter: Int, CaseIterable, Codable {
     }
 
     func spawnMonster(difficulty: Difficulty) -> Monster {
-        let eligible = monsterPool.compactMap { id in
-            Monster.allMonsters.first { $0.id == id }
-        }
-        let monster = eligible.randomElement() ?? Monster.allMonsters[0]
-
-        // 难度缩放
-        let scale = difficulty.statMultiplier
-        return Monster(
-            id: monster.id,
-            name: monster.name,
-            hp: Int(Double(monster.hp) * scale),
-            atk: Int(Double(monster.atk) * scale),
-            def: Int(Double(monster.def) * scale),
-            spd: monster.spd,
-            critRate: monster.critRate,
-            xpReward: Int(Double(monster.xpReward) * scale),
-            goldReward: Int(Double(monster.goldReward) * scale),
-            lootTableID: monster.lootTableID
-        )
+        StageDefinition.stage(act: self, number: 1).spawnMonster(difficulty: difficulty)
     }
 }

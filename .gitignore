@@ -8,6 +8,7 @@ dist/
 # 会话工具
 .remember/
 .claude/settings.local.json
+__pycache__/
 
 # Xcode（如未来添加）
 *.xcodeproj

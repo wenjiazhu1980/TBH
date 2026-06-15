@@ -1,14 +1,22 @@
 import SwiftUI
+import AppKit
 
 /// 背包面板 — 使用像素物品图标
 struct InventoryView: View {
     @ObservedObject var inventory: Inventory
     @ObservedObject var hero: Hero
+    let cubeProgress: CubeProgress
     /// 装备动作交由 GameEngine 处理（旧装备会放回背包）
     let onEquip: (Item) -> Void
+    let onInfuseIntoCube: (Item) -> Void
+    let onAlchemize: (Item) -> Void
+    let onSynthesize: (Rarity) -> Item?
     @State private var selectedItems: Set<Item> = []
 
-    var selectedItem: Item? { selectedItems.first }
+    var selectedItem: Item? {
+        guard let selected = selectedItems.first else { return nil }
+        return inventory.items.first { $0.id == selected.id }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,6 +25,9 @@ struct InventoryView: View {
                 Text("背包 (\(inventory.items.count)/\(inventory.maxCapacity))")
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
+                Label(cubeProgress.displayText, systemImage: "cube.fill")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -44,9 +55,15 @@ struct InventoryView: View {
                         ForEach(inventory.items) { item in
                             ItemGridCell(item: item, isSelected: selectedItems.contains(item))
                                 .onTapGesture {
-                                    if selectedItems.contains(item) {
+                                    switch InventoryInteraction.actionForItemClick(
+                                        isSelected: selectedItems.contains(item),
+                                        modifierFlags: NSEvent.modifierFlags
+                                    ) {
+                                    case .toggleLock:
+                                        toggleLock(item)
+                                    case .deselect:
                                         selectedItems.remove(item)
-                                    } else {
+                                    case .selectExclusive:
                                         selectedItems = [item]
                                     }
                                 }
@@ -63,7 +80,11 @@ struct InventoryView: View {
 
                         EquipmentComparisonView(hero: hero, item: item)
 
-                        HStack {
+                        SynthesisPreviewView(
+                            preview: synthesisPreview(for: item.rarity)
+                        )
+
+                        VStack(spacing: 5) {
                             if item.slot != nil {
                                 Button("装备") {
                                     onEquip(item)
@@ -71,14 +92,60 @@ struct InventoryView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
+                                .frame(maxWidth: .infinity)
                             }
-                            Button("丢弃") {
-                                inventory.remove(item)
-                                selectedItems.removeAll()
+
+                            Button {
+                                if let output = onSynthesize(item.rarity) {
+                                    selectedItems = [output]
+                                }
+                            } label: {
+                                Label("合成", systemImage: "arrow.triangle.2.circlepath")
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                            .foregroundColor(.red)
+                            .disabled(!canSynthesize(rarity: item.rarity))
+                            .frame(maxWidth: .infinity)
+
+                            HStack {
+                                Button {
+                                    toggleLock(item)
+                                } label: {
+                                    Label(item.isLocked ? "解锁" : "锁定", systemImage: item.isLocked ? "lock.open" : "lock")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                Button {
+                                    onInfuseIntoCube(item)
+                                    selectedItems.removeAll()
+                                } label: {
+                                    Label("Cube", systemImage: "cube")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(item.isLocked)
+
+                                Button {
+                                    onAlchemize(item)
+                                    selectedItems.removeAll()
+                                } label: {
+                                    Label("炼金", systemImage: "dollarsign.circle")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(item.isLocked)
+
+                                Button("丢弃") {
+                                    if inventory.discard(item) {
+                                        selectedItems.removeAll()
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .foregroundColor(.red)
+                                .disabled(item.isLocked)
+                            }
                         }
                     }
                     .padding(8)
@@ -91,6 +158,38 @@ struct InventoryView: View {
     private func currentEquippedItem(for item: Item) -> Item? {
         guard let slot = item.slot else { return nil }
         return hero.equipment.item(in: slot)
+    }
+
+    private func toggleLock(_ item: Item) {
+        if let updated = inventory.toggleLock(item) {
+            selectedItems = [updated]
+        }
+    }
+
+    private func synthesisPreview(for rarity: Rarity) -> SynthesisPreview {
+        SynthesisPreview.make(for: rarity, in: inventory.items)
+    }
+
+    private func canSynthesize(rarity: Rarity) -> Bool {
+        synthesisPreview(for: rarity).isReady
+    }
+}
+
+enum InventoryItemClickAction: Equatable {
+    case selectExclusive
+    case deselect
+    case toggleLock
+}
+
+enum InventoryInteraction {
+    static func actionForItemClick(
+        isSelected: Bool,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> InventoryItemClickAction {
+        if modifierFlags.contains(.option) {
+            return .toggleLock
+        }
+        return isSelected ? .deselect : .selectExclusive
     }
 }
 
@@ -137,6 +236,16 @@ struct ItemGridCell: View {
                 .background(Color.black.opacity(0.55))
                 .cornerRadius(2)
                 .offset(x: 14, y: 15)
+
+            if item.isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(3)
+                    .background(Color.black.opacity(0.65))
+                    .clipShape(Circle())
+                    .offset(x: -15, y: -15)
+            }
         }
         .frame(width: 50, height: 50)
     }
@@ -164,9 +273,22 @@ struct ItemDetailHeader: View {
                 Text(item.name)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(Color(hex: item.rarity.color))
-                Text(item.rarity.rawValue)
+                Text("Lv.\(item.itemLevel) · \(item.rarity.rawValue)")
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
+                if let equipmentType = item.equipmentType {
+                    Text(equipmentType.typeLine)
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary)
+                }
+                Text("D/E/I \(item.rarity.slotSummary) · Cube +\(item.rarity.cubeExperience) · 炼金 +\(item.rarity.alchemyGoldValue)G")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(.secondary)
+                if item.isLocked {
+                    Label("已锁定", systemImage: "lock.fill")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
                 if let currentItem {
                     Text("当前: \(currentItem.name)")
                         .font(.system(size: 8))
@@ -196,6 +318,58 @@ struct ItemDetailHeader: View {
                 }
             }
         }
+    }
+}
+
+private struct SynthesisPreviewView: View {
+    let preview: SynthesisPreview
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(preview.isReady ? .green : .secondary)
+
+                if let outputRarity = preview.outputRarity {
+                    Text("合成 \(Rarity.synthesisInputCount)x \(preview.inputRarity.rawValue) -> \(outputRarity.rawValue)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(min(preview.unlockedInputCount, Rarity.synthesisInputCount))/\(Rarity.synthesisInputCount)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(preview.isReady ? .green : .secondary)
+                } else {
+                    Text("宇宙品质无法继续合成")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+
+            if preview.outputRarity != nil {
+                HStack(spacing: 6) {
+                    if let outputItemLevel = preview.outputItemLevel {
+                        Label("Lv.\(outputItemLevel)", systemImage: "scope")
+                            .foregroundColor(.secondary)
+                    }
+                    if preview.lockedInputCount > 0 {
+                        Label("锁定 \(preview.lockedInputCount)", systemImage: "lock.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    if let boundary = preview.sourceVariantBoundary {
+                        Text(boundary)
+                            .foregroundColor(.secondary.opacity(0.9))
+                    }
+                    Spacer()
+                }
+                .font(.system(size: 8, weight: .medium))
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.12))
+        .cornerRadius(5)
     }
 }
 

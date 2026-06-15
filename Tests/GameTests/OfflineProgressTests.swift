@@ -14,22 +14,51 @@ import Testing
         #expect(rewards.gold > 0, "Should earn gold offline")
     }
 
-    @Test func offlineCap() {
+    @Test func offlineBoostMultipliersApplyIndependently() {
         let hero = Hero()
+        let base = OfflineProgress.calculate(
+            hero: hero,
+            chapter: .forest,
+            difficulty: .normal,
+            offlineSeconds: 3600
+        )
+        let goldBoosted = OfflineProgress.calculate(
+            hero: hero,
+            chapter: .forest,
+            difficulty: .normal,
+            offlineSeconds: 3600,
+            offlineGoldMultiplier: 1.10
+        )
+        let xpBoosted = OfflineProgress.calculate(
+            hero: hero,
+            chapter: .forest,
+            difficulty: .normal,
+            offlineSeconds: 3600,
+            offlineXPMultiplier: 1.10
+        )
+
+        #expect(goldBoosted.gold > base.gold)
+        #expect(goldBoosted.xp == base.xp)
+        #expect(xpBoosted.xp > base.xp)
+        #expect(xpBoosted.gold == base.gold)
+    }
+
+    @Test func offlineCapIsEightHours() {
+        let hero = Hero()
+        let rewards8h = OfflineProgress.calculate(
+            hero: hero,
+            chapter: .forest,
+            difficulty: .normal,
+            offlineSeconds: OfflineProgress.maxOfflineSeconds
+        )
         let rewards24h = OfflineProgress.calculate(
             hero: hero,
             chapter: .forest,
             difficulty: .normal,
-            offlineSeconds: 86400  // 24 小时
+            offlineSeconds: 86_400  // 24 小时
         )
-        let rewards48h = OfflineProgress.calculate(
-            hero: hero,
-            chapter: .forest,
-            difficulty: .normal,
-            offlineSeconds: 172800  // 48 小时
-        )
-        // 封顶 24 小时，收益应相等
-        #expect(rewards24h.xp == rewards48h.xp)
-        #expect(rewards24h.gold == rewards48h.gold)
+        // 原版封顶 8 小时，超过后收益应相等
+        #expect(rewards8h.xp == rewards24h.xp)
+        #expect(rewards8h.gold == rewards24h.gold)
     }
 }

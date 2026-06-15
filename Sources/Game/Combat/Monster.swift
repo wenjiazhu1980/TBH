@@ -12,6 +12,64 @@ struct Monster: Identifiable, Codable {
     let xpReward: Int
     let goldReward: Int
     let lootTableID: String
+    let itemLevelCap: Int
+
+    init(
+        id: String,
+        name: String,
+        hp: Int,
+        atk: Int,
+        def: Int,
+        spd: Int,
+        critRate: Double,
+        xpReward: Int,
+        goldReward: Int,
+        lootTableID: String,
+        itemLevelCap: Int = 1
+    ) {
+        self.id = id
+        self.name = name
+        self.hp = hp
+        self.atk = atk
+        self.def = def
+        self.spd = spd
+        self.critRate = critRate
+        self.xpReward = xpReward
+        self.goldReward = goldReward
+        self.lootTableID = lootTableID
+        self.itemLevelCap = max(1, itemLevelCap)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case hp
+        case atk
+        case def
+        case spd
+        case critRate
+        case xpReward
+        case goldReward
+        case lootTableID
+        case itemLevelCap
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            name: try container.decode(String.self, forKey: .name),
+            hp: try container.decode(Int.self, forKey: .hp),
+            atk: try container.decode(Int.self, forKey: .atk),
+            def: try container.decode(Int.self, forKey: .def),
+            spd: try container.decode(Int.self, forKey: .spd),
+            critRate: try container.decode(Double.self, forKey: .critRate),
+            xpReward: try container.decode(Int.self, forKey: .xpReward),
+            goldReward: try container.decode(Int.self, forKey: .goldReward),
+            lootTableID: try container.decode(String.self, forKey: .lootTableID),
+            itemLevelCap: try container.decodeIfPresent(Int.self, forKey: .itemLevelCap) ?? 1
+        )
+    }
 
     static let allMonsters: [Monster] = [
         Monster(id: "slime_green", name: "绿色史莱姆", hp: 50, atk: 8, def: 3, spd: 5, critRate: 0.02, xpReward: 15, goldReward: 10, lootTableID: "slime_drops"),

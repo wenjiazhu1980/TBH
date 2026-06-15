@@ -1,14 +1,73 @@
 import Foundation
 
 /// 英雄职业
-enum HeroClass: String, Codable, CaseIterable {
-    case warrior = "战士"
+enum HeroClass: String, CaseIterable, Codable {
+    case knight = "骑士"
+    case ranger = "游侠"
+    case sorcerer = "法师"
+    case priest = "牧师"
+    case hunter = "猎人"
+    case slayer = "杀手"
 
     var baseStats: BaseStats {
         switch self {
-        case .warrior:
-            return BaseStats(hp: 100, atk: 15, def: 10, spd: 8, critRate: 0.05, critDamage: 1.5)
+        case .knight:
+            return BaseStats(hp: 130, atk: 18, def: 45, spd: 9, critRate: 0.025, critDamage: 1.4)
+        case .ranger:
+            return BaseStats(hp: 60, atk: 10, def: 8, spd: 10, critRate: 0.04, critDamage: 1.5)
+        case .sorcerer:
+            return BaseStats(hp: 50, atk: 11, def: 5, spd: 6, critRate: 0.05, critDamage: 1.65)
+        case .priest:
+            return BaseStats(hp: 95, atk: 9, def: 30, spd: 9, critRate: 0.02, critDamage: 1.4)
+        case .hunter:
+            return BaseStats(hp: 70, atk: 14, def: 15, spd: 7, critRate: 0.045, critDamage: 1.55)
+        case .slayer:
+            return BaseStats(hp: 115, atk: 14, def: 40, spd: 7, critRate: 0.025, critDamage: 1.8)
         }
+    }
+
+    var role: String {
+        switch self {
+        case .knight: return "坦克 / 前排"
+        case .ranger: return "远程物理 DPS"
+        case .sorcerer: return "范围元素 DPS"
+        case .priest: return "治疗 / 增益"
+        case .hunter: return "陷阱 / 远程 DPS"
+        case .slayer: return "近战爆发 / 吸血"
+        }
+    }
+
+    var grade: String {
+        switch self {
+        case .knight, .priest, .hunter: return "S"
+        case .sorcerer, .slayer: return "A"
+        case .ranger: return "B"
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawValue = try decoder.singleValueContainer().decode(String.self)
+        switch rawValue {
+        case Self.knight.rawValue, "战士", "warrior", "Warrior", "knight", "Knight":
+            self = .knight
+        case Self.ranger.rawValue, "ranger", "Ranger":
+            self = .ranger
+        case Self.sorcerer.rawValue, "sorcerer", "Sorcerer", "法师":
+            self = .sorcerer
+        case Self.priest.rawValue, "priest", "Priest":
+            self = .priest
+        case Self.hunter.rawValue, "hunter", "Hunter":
+            self = .hunter
+        case Self.slayer.rawValue, "slayer", "Slayer", "屠戮者":
+            self = .slayer
+        default:
+            self = .knight
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 
@@ -24,7 +83,7 @@ struct BaseStats: Codable {
 /// 英雄
 class Hero: ObservableObject, Codable {
     @Published var name: String = "无名英雄"
-    @Published var heroClass: HeroClass = .warrior
+    @Published var heroClass: HeroClass = .knight
     @Published var level: Int = 1
     @Published var currentXP: Int = 0
     @Published var gold: Int = 0
@@ -36,15 +95,15 @@ class Hero: ObservableObject, Codable {
     var baseStats: BaseStats { heroClass.baseStats }
 
     var maxHP: Int {
-        baseStats.hp + level * 10 + equipment.bonusHP
+        baseStats.hp + max(level - 1, 0) * 10 + equipment.bonusHP
     }
 
     var attack: Int {
-        baseStats.atk + level * 2 + equipment.bonusATK
+        baseStats.atk + max(level - 1, 0) * 2 + equipment.bonusATK
     }
 
     var defense: Int {
-        baseStats.def + level * 1 + equipment.bonusDEF
+        baseStats.def + max(level - 1, 0) + equipment.bonusDEF
     }
 
     var speed: Int {
@@ -80,8 +139,30 @@ class Hero: ObservableObject, Codable {
         currentHP = max(0, currentHP - amount)
     }
 
+    @discardableResult
+    func heal(_ amount: Int) -> Int {
+        guard currentHP < maxHP else { return 0 }
+        let oldHP = currentHP
+        currentHP = min(maxHP, currentHP + max(0, amount))
+        return currentHP - oldHP
+    }
+
+    @discardableResult
+    func revive(withHP amount: Int) -> Int {
+        let oldHP = currentHP
+        currentHP = max(1, amount)
+        return currentHP - oldHP
+    }
+
     func respawn() {
         currentHP = maxHP / 2
+    }
+
+    func changeClass(to newClass: HeroClass) {
+        guard newClass != heroClass else { return }
+        let wasAtFullHealth = currentHP >= maxHP
+        heroClass = newClass
+        currentHP = wasAtFullHealth ? maxHP : min(currentHP, maxHP)
     }
 
     // MARK: - Codable
