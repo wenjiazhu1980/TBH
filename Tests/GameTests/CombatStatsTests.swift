@@ -148,6 +148,24 @@ import Testing
         #expect(Set(PassiveSkills.all.map(\.stat)).count == 30)
     }
 
+    @Test func passiveSkillCatalogMapsCurrentSourceIcons() {
+        let iconNames = PassiveSkills.all.compactMap { GameArt.passiveSkillIconName(for: $0) }
+        let missingIconStats = Set(
+            PassiveSkills.all
+                .filter { GameArt.passiveSkillIconName(for: $0) == nil }
+                .map(\.stat)
+        )
+
+        #expect(iconNames.count == 104)
+        #expect(Set(iconNames).count == GameArt.passiveSkillIconNames.count)
+        #expect(GameArt.passiveSkillIconNames.count == 27)
+        #expect(iconNames.allSatisfy { $0.hasPrefix("source_passive_") })
+        #expect(missingIconStats == ["IncreaseProjectileDamage", "SkillHealIncrease"])
+        #expect(GameArt.passiveSkillIconName(forStat: "SkillDurationIncrease") == "source_passive_Duration")
+        #expect(GameArt.passiveSkillIconName(forStat: "ElementalDodgeChance") == "source_passive_DodgeChance")
+        #expect(GameArt.passiveSkillIconName(forStat: "IncreaseAreaOfEffectDamage") == "source_passive_AreaOfEffectDamage")
+    }
+
     @Test func passiveSkillCatalogKeepsKnownSourceRows() {
         #expect(PassiveSkills.skill(id: "101001") == PassiveSkill(
             id: "101001",

@@ -266,6 +266,103 @@ enum GameArt {
         ]
     }
 
+    static func passiveSkillIconName(for passiveSkill: PassiveSkill) -> String? {
+        passiveSkillIconName(forStat: passiveSkill.stat)
+    }
+
+    static func passiveSkillIconName(forStat stat: String) -> String? {
+        switch stat {
+        case "AddHpPerHit":
+            return "source_passive_AddHpPerHit"
+        case "AddHpPerKill":
+            return "source_passive_AddHpPerKill"
+        case "AllElementalResistance":
+            return "source_passive_AllElementalResistance"
+        case "AreaOfEffect":
+            return "source_passive_AreaOfEffect"
+        case "Armor":
+            return "source_passive_Armor"
+        case "AttackDamage":
+            return "source_passive_AttackDamage"
+        case "AttackSpeed":
+            return "source_passive_AttackSpeed"
+        case "BlockChance":
+            return "source_passive_BlockChance"
+        case "CastSpeed":
+            return "source_passive_CastSpeed"
+        case "ColdDamagePercent":
+            return "source_passive_ColdDamagePercent"
+        case "CooldownReduction":
+            return "source_passive_CooldownReduction"
+        case "CriticalChance":
+            return "source_passive_CriticalChance"
+        case "CriticalDamage":
+            return "source_passive_CriticalDamage"
+        case "DamageAbsorption":
+            return "source_passive_DamageAbsorption"
+        case "DamageReduction":
+            return "source_passive_DamageReduction"
+        case "DodgeChance", "ElementalDodgeChance":
+            return "source_passive_DodgeChance"
+        case "FireDamagePercent":
+            return "source_passive_FireDamagePercent"
+        case "HpLeech":
+            return "source_passive_HpLeech"
+        case "HpRegenPerSec":
+            return "source_passive_HpRegenPerSec"
+        case "IncreaseAreaOfEffectDamage":
+            return "source_passive_AreaOfEffectDamage"
+        case "LightningDamagePercent":
+            return "source_passive_LightningDamagePercent"
+        case "MaxDodgeChance":
+            return "source_passive_MaxDodgeChance"
+        case "MaxHp":
+            return "source_passive_MaxHp"
+        case "MovementSpeed":
+            return "source_passive_MovementSpeed"
+        case "PhysicalDamagePercent":
+            return "source_passive_PhysicalDamagePercent"
+        case "SkillDurationIncrease":
+            return "source_passive_Duration"
+        case "SkillRangeExpansion":
+            return "source_passive_SkillRangeExpansion"
+        default:
+            return nil
+        }
+    }
+
+    static var passiveSkillIconNames: [String] {
+        [
+            "source_passive_AddHpPerHit",
+            "source_passive_AddHpPerKill",
+            "source_passive_AllElementalResistance",
+            "source_passive_AreaOfEffect",
+            "source_passive_AreaOfEffectDamage",
+            "source_passive_Armor",
+            "source_passive_AttackDamage",
+            "source_passive_AttackSpeed",
+            "source_passive_BlockChance",
+            "source_passive_CastSpeed",
+            "source_passive_ColdDamagePercent",
+            "source_passive_CooldownReduction",
+            "source_passive_CriticalChance",
+            "source_passive_CriticalDamage",
+            "source_passive_DamageAbsorption",
+            "source_passive_DamageReduction",
+            "source_passive_DodgeChance",
+            "source_passive_Duration",
+            "source_passive_FireDamagePercent",
+            "source_passive_HpLeech",
+            "source_passive_HpRegenPerSec",
+            "source_passive_LightningDamagePercent",
+            "source_passive_MaxDodgeChance",
+            "source_passive_MaxHp",
+            "source_passive_MovementSpeed",
+            "source_passive_PhysicalDamagePercent",
+            "source_passive_SkillRangeExpansion"
+        ]
+    }
+
     static func runeTreeIconName(for node: RuneTreeNode) -> String {
         switch node {
         case .partySlot2, .partySlot3:

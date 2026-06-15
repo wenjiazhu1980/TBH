@@ -2791,6 +2791,28 @@ enum SelfTest {
             Set(PassiveSkills.all.map(\.stat)).count == 30,
             "passive skill catalog preserves checked stat variety"
         )
+        let passiveSkillIconNames = PassiveSkills.all.compactMap { GameArt.passiveSkillIconName(for: $0) }
+        let missingPassiveIconStats = Set(
+            PassiveSkills.all
+                .filter { GameArt.passiveSkillIconName(for: $0) == nil }
+                .map(\.stat)
+        )
+        expect(
+            passiveSkillIconNames.count == 104 &&
+                Set(passiveSkillIconNames).count == GameArt.passiveSkillIconNames.count &&
+                GameArt.passiveSkillIconNames.count == 27,
+            "passive skill catalog maps current source-backed rows to 27 bundled source icons"
+        )
+        expect(
+            missingPassiveIconStats == ["IncreaseProjectileDamage", "SkillHealIncrease"],
+            "passive skill icon mapping keeps current source-page missing icon stats explicit"
+        )
+        expect(
+            GameArt.passiveSkillIconName(forStat: "SkillDurationIncrease") == "source_passive_Duration" &&
+                GameArt.passiveSkillIconName(forStat: "ElementalDodgeChance") == "source_passive_DodgeChance" &&
+                GameArt.passiveSkillIconName(forStat: "IncreaseAreaOfEffectDamage") == "source_passive_AreaOfEffectDamage",
+            "passive skill icon mapping preserves non-mechanical source icon families"
+        )
         expect(
             PassiveSkills.skill(id: "101001") == PassiveSkill(
                 id: "101001",

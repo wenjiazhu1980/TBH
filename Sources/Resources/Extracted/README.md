@@ -147,6 +147,19 @@
 - 每个 `GameArt.skillIconNames` 中的图标都必须能从打包资源加载，并保持 `40x40`
 - `ResourceSelfTest` 会检查图标色彩复杂度，避免 `ss_03.jpg` 背景纹理块再次被当作技能图标混入运行时
 
+### 被动技能源图标（27 个）
+| 文件名 | 格式 | 说明 |
+|--------|------|------|
+| source_passive_*.png | 16x16 / 32x32 RGBA | 从 `taskbarhero.org/en/skills/` 的被动技能表 `<img class="db-icon">` 直接下载 |
+
+当前源页的 108 个被动技能行中，104 行暴露了源图标，合并为 27 个图标族，其中 16 个图标族是 `16x16`，11 个图标族是 `32x32`。`ElementalDodgeChance` 复用 `source_passive_DodgeChance`，`SkillDurationIncrease` 映射到 `source_passive_Duration`，`IncreaseAreaOfEffectDamage` 映射到 `source_passive_AreaOfEffectDamage`。当前源页没有为 `IncreaseProjectileDamage` 与 `SkillHealIncrease` 暴露图片，因此这 4 行被动技能在代码中保持“无源图标”状态，不用其他图标伪装为原图。当前源页还暴露了一组不同文件名但像素相同的图标：`CastSpeed`、`DamageAbsorption`、`MaxDodgeChance`、`MaxHp`、`MovementSpeed`，审计脚本把这组作为显式源站复用处理。
+
+被动技能图标资源的打包契约：
+- `GameArt.passiveSkillIconName(for:)` 必须让当前源页有图的 104 个被动行解析到 `source_passive_*`
+- `GameArt.passiveSkillIconNames` 必须覆盖当前源页暴露的 27 个唯一被动图标族
+- 每个 `source_passive_*` 图标都必须能从打包资源加载，并保持当前源页尺寸（`16x16` 或 `32x32`）
+- `ResourceSelfTest` 和 `scripts/audit-local-passive-skill-icons.sh` 会检查 104/108 映射、27 个图标族、当前源页缺图 stat、源尺寸、透明通道与非预期重复像素
+
 ### 符文树节点图标（当前建模子集）
 | 文件名 | 对应节点 | 格式 | 说明 |
 |--------|------|------|------|

@@ -61,6 +61,7 @@ enum ResourceSelfTest {
                     GameArt.stageChestIconName(for: $0)
                 } +
                 GameArt.skillIconNames +
+                GameArt.passiveSkillIconNames +
                 GameArt.runeTreeIconNames
         )
     }
@@ -158,6 +159,7 @@ enum ResourceSelfTest {
         spriteIssues += validateStageMonsterSpriteMappings()
         spriteIssues += validateItemSpriteMappings()
         spriteIssues += validateSkillIconMappings()
+        spriteIssues += validatePassiveSkillIconMappings()
         spriteIssues += validateRuneTreeIconMappings()
         var sfxIssues = validateSFXResourceNames()
         sfxIssues += validateSFXBattleEventRoutes()
@@ -1137,6 +1139,77 @@ enum ResourceSelfTest {
         }
 
         return issues
+    }
+
+    private static func validatePassiveSkillIconMappings() -> [SpriteIssue] {
+        var issues: [SpriteIssue] = []
+        let mappedIcons = PassiveSkills.all.compactMap { GameArt.passiveSkillIconName(for: $0) }
+        let missingSourceIconStats = Set(
+            PassiveSkills.all
+                .filter { GameArt.passiveSkillIconName(for: $0) == nil }
+                .map(\.stat)
+        )
+
+        if mappedIcons.count != 104 || missingSourceIconStats != ["IncreaseProjectileDamage", "SkillHealIncrease"] {
+            issues.append(
+                SpriteIssue(
+                    name: "PassiveSkillArt",
+                    message: "expected 104 passive rows to use source icons and only IncreaseProjectileDamage/SkillHealIncrease to have no current source icon, got mapped=\(mappedIcons.count), missing=\(missingSourceIconStats.sorted().joined(separator: ","))"
+                )
+            )
+        }
+
+        if Set(mappedIcons).count != GameArt.passiveSkillIconNames.count || GameArt.passiveSkillIconNames.count != 27 {
+            issues.append(
+                SpriteIssue(
+                    name: "PassiveSkillArt",
+                    message: "passive source icon family coverage must stay at 27 current Wiki image families"
+                )
+            )
+        }
+
+        if !mappedIcons.allSatisfy({ $0.hasPrefix("source_passive_") }) {
+            issues.append(
+                SpriteIssue(
+                    name: "PassiveSkillArt",
+                    message: "passive skill icons must use bundled source_passive_* source art"
+                )
+            )
+        }
+
+        for iconName in GameArt.passiveSkillIconNames {
+            let expectedSize = passiveSkillIconSize(named: iconName)
+            if let issue = validateSourceItemSprite(
+                named: iconName,
+                context: "PassiveSkillArt",
+                expectedWidth: expectedSize.width,
+                expectedHeight: expectedSize.height,
+                label: "passive skill"
+            ) {
+                issues.append(issue)
+            }
+        }
+
+        return issues
+    }
+
+    private static func passiveSkillIconSize(named iconName: String) -> (width: Int, height: Int) {
+        switch iconName {
+        case "source_passive_Armor",
+            "source_passive_AttackDamage",
+            "source_passive_AttackSpeed",
+            "source_passive_CastSpeed",
+            "source_passive_CooldownReduction",
+            "source_passive_CriticalChance",
+            "source_passive_CriticalDamage",
+            "source_passive_DamageAbsorption",
+            "source_passive_MaxDodgeChance",
+            "source_passive_MaxHp",
+            "source_passive_MovementSpeed":
+            return (32, 32)
+        default:
+            return (16, 16)
+        }
     }
 
     private static func validateRuneTreeIconMappings() -> [SpriteIssue] {

@@ -152,6 +152,15 @@ struct CharacterView: View {
                     .padding(.vertical, 4)
                 }
 
+                GroupBox("被动技能") {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(PassiveSkills.skills(for: hero.heroClass)) { passiveSkill in
+                            PassiveSkillRow(passiveSkill: passiveSkill)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
                 // 装备栏
                 GroupBox("装备") {
                     VStack(alignment: .leading, spacing: 4) {
@@ -201,6 +210,42 @@ private struct SkillRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+private struct PassiveSkillRow: View {
+    let passiveSkill: PassiveSkill
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            if let iconName = GameArt.passiveSkillIconName(for: passiveSkill) {
+                PixelSprite(
+                    imageName: iconName,
+                    size: CGSize(width: 16, height: 16)
+                )
+                .frame(width: 16, height: 16)
+            } else {
+                Color.clear
+                    .frame(width: 16, height: 16)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(passiveSkill.name)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer()
+                    Text(passiveSkill.id)
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                Text("\(passiveSkill.stat) \(passiveSkill.valueType.rawValue) \(passiveSkill.value)")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 1)
     }
 }
 
