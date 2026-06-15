@@ -1914,6 +1914,52 @@ enum SelfTest {
             "support Flame Hydra keeps its own sustained summon damage and visible deployable state"
         )
 
+        var supportRapidFireParty = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        supportRapidFireParty.setHeroClass(.ranger, atSlot: 1)
+        var supportRapidFireLoadouts = ActiveSkillLoadouts()
+        supportRapidFireLoadouts.setSkills(["20101"], for: .ranger)
+        let supportRapidFireMonster = Monster(
+            id: "support-rapid-fire-training",
+            name: "支援快速射击训练木桩",
+            hp: 1_000_000,
+            atk: 1,
+            def: 0,
+            spd: 1,
+            critRate: 0,
+            xpReward: 0,
+            goldReward: 0,
+            lootTableID: "none"
+        )
+        let supportRapidFireBattle = Battle(
+            hero: Hero(),
+            monster: supportRapidFireMonster,
+            party: supportRapidFireParty,
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: supportRapidFireLoadouts
+        )
+        for _ in 0..<20 {
+            supportRapidFireBattle.update(deltaTime: 1)
+            if supportRapidFireBattle.log.filter({
+                $0.attacker == .support(.ranger) &&
+                    $0.skillName == "快速射击" &&
+                    $0.kind == .damage
+            }).count >= 2 {
+                break
+            }
+        }
+        expect(
+            supportRapidFireBattle.log.filter {
+                $0.attacker == .support(.ranger) &&
+                    $0.skillName == "快速射击" &&
+                    $0.kind == .damage
+            }.count >= 2 &&
+                !supportRapidFireBattle.log.contains {
+                    $0.attacker == .hero &&
+                        $0.skillName == "快速射击"
+                },
+            "support attack-count skills trigger from support attacks instead of the main hero skill path"
+        )
+
         let snowstormHero = Hero()
         snowstormHero.changeClass(to: .sorcerer)
         let snowstormMonsters = (1...3).map { index in
@@ -2659,6 +2705,57 @@ enum SelfTest {
                 shockBoltBattle.activeBuffNames.contains("电击弩箭电流") &&
                 shockBoltBattle.log.filter { $0.skillName == "电击弩箭电流" && $0.kind == .damage }.count >= 3,
             "Shock Bolt lodges a bolt and emits checked lightning current damage over time"
+        )
+
+        var supportShockBoltParty = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        supportShockBoltParty.setHeroClass(.hunter, atSlot: 1)
+        var supportShockBoltLoadouts = ActiveSkillLoadouts()
+        supportShockBoltLoadouts.setSkills(["50601"], for: .hunter)
+        let supportShockBoltMonsters = (1...3).map { index in
+            Monster(
+                id: "support-shock-bolt-\(index)",
+                name: "支援电击弩箭训练 \(index)",
+                hp: 1_000_000,
+                atk: 1,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            )
+        }
+        let supportShockBoltBattle = Battle(
+            hero: Hero(),
+            monsters: supportShockBoltMonsters,
+            party: supportShockBoltParty,
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: supportShockBoltLoadouts
+        )
+        for _ in 0..<30 {
+            supportShockBoltBattle.update(deltaTime: 1)
+            if supportShockBoltBattle.log.contains(where: {
+                $0.attacker == .support(.hunter) &&
+                    $0.skillName == "电击弩箭电流" &&
+                    $0.kind == .damage
+            }) {
+                break
+            }
+        }
+        expect(
+            supportShockBoltBattle.activeBuffNames.contains("电击弩箭电流") &&
+                PlayerBattleStatusBadge.visible(for: supportShockBoltBattle).contains(.shockCurrent) &&
+                supportShockBoltBattle.log.contains {
+                    $0.attacker == .support(.hunter) &&
+                        $0.skillName == "电击弩箭" &&
+                        $0.kind == .damage
+                } &&
+                supportShockBoltBattle.log.filter {
+                    $0.attacker == .support(.hunter) &&
+                        $0.skillName == "电击弩箭电流" &&
+                        $0.kind == .damage
+                }.count >= 3,
+            "support Shock Bolt keeps support-attributed lodged hit and lightning current damage"
         )
 
         let waveHero = Hero()

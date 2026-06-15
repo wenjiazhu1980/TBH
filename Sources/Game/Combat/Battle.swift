@@ -306,7 +306,9 @@ class Battle: ObservableObject {
     private var nextAttackCountSkillIndex = 0
     private var nextEnemyTargetIndex = 0
     private var nextSupportCooldownSkillIndexes: [Int: Int] = [:]
+    private var nextSupportAttackCountSkillIndexes: [Int: Int] = [:]
     private var heroBaseAttackCount = 0
+    private var supportBaseAttackCounts: [Int: Int] = [:]
     private var activeHeroBuffs: [ActiveBattleBuff] = []
     private var activeSupportSkillBuffs: [ActiveSupportSkillBuff] = []
     private var unyieldingWillAvailable: Bool
@@ -576,7 +578,13 @@ class Battle: ObservableObject {
         return updatedState.hp <= 0
     }
 
-    private func applyCrushingBlowShockwave(excluding defeatedIndex: Int?) {
+    private func applyCrushingBlowShockwave(
+        excluding defeatedIndex: Int?,
+        attacker: BattleLogEntry.Battler = .hero,
+        attackPower: Int? = nil,
+        critRate: Double? = nil,
+        critDamage: Double? = nil
+    ) {
         guard !isOver else { return }
 
         let targetIndices = enemyStates.indices.filter { index in
@@ -584,7 +592,10 @@ class Battle: ObservableObject {
         }
         guard !targetIndices.isEmpty else { return }
 
-        let shockwaveAttack = max(1, Int(Double(modifiedHeroAttack) * 3.5))
+        let sourceAttack = attackPower ?? modifiedHeroAttack
+        let sourceCritRate = critRate ?? modifiedHeroCritRate
+        let sourceCritDamage = critDamage ?? hero.critDamage
+        let shockwaveAttack = max(1, Int(Double(sourceAttack) * 3.5))
         var shockwaveDefeats: [Int] = []
 
         for index in targetIndices {
@@ -592,16 +603,16 @@ class Battle: ObservableObject {
             let hit = DamageCalculator.calculateResult(
                 attackerATK: shockwaveAttack,
                 defenderDEF: target.monster.def,
-                critRate: modifiedHeroCritRate,
-                critDamage: hero.critDamage
+                critRate: sourceCritRate,
+                critDamage: sourceCritDamage
             )
             if damageEnemy(at: index, amount: hit.amount) {
                 shockwaveDefeats.append(index)
             }
             log.append(BattleLogEntry(
-                attacker: .hero,
+                attacker: attacker,
                 damage: hit.amount,
-                isCrit: false,
+                isCrit: hit.isCrit,
                 skillName: "粉碎强击冲击波",
                 kind: .damage
             ))
@@ -646,9 +657,15 @@ class Battle: ObservableObject {
             log.append(BattleLogEntry(attacker: .support(member.heroClass), damage: hit.amount, isCrit: hit.isCrit))
             onEvent?(.supportAttack(isCrit: hit.isCrit))
             applied = true
+            supportBaseAttackCounts[member.slotIndex, default: 0] += 1
 
             if defeated, completeFocusedEnemyIfNeeded() {
                 return true
+            }
+
+            if applyTriggeredSupportSkillAfterAttack(for: member) {
+                applied = true
+                if isOver { return true }
             }
         }
         return applied
@@ -2063,6 +2080,42 @@ class Battle: ObservableObject {
 
     @discardableResult
     private func applySupportSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        if skill.id == "10101" {
+            return applySupportRangeDamageSkill(skill, member: member)
+        }
+
+        if skill.id == "10301" {
+            return applySupportRetributionStrikeSkill(skill, member: member)
+        }
+
+        if skill.id == "20101" {
+            return applySupportRapidProjectileSkill(skill, member: member)
+        }
+
+        if skill.id == "20501" {
+            return applySupportPiercingProjectileSkill(skill, member: member)
+        }
+
+        if skill.id == "20601" {
+            return applySupportSkewerShotSkill(skill, member: member)
+        }
+
+        if skill.id == "50101" {
+            return applySupportRangeDamageSkill(skill, member: member)
+        }
+
+        if skill.id == "50601" {
+            return applySupportShockBoltSkill(skill, member: member)
+        }
+
+        if skill.id == "60201" {
+            return applySupportCrushingBlowSkill(skill, member: member)
+        }
+
+        if skill.id == "60401" {
+            return applySupportRangeDamageSkill(skill, member: member)
+        }
+
         if skill.id == "30401" || skill.id == "50501" {
             _ = activateSupportSustainedDamageBuff(for: skill, member: member, focusedProjectileOnly: true)
             log.append(BattleLogEntry(
@@ -2193,12 +2246,13 @@ class Battle: ObservableObject {
         for skill: Skill,
         member: PartyMember,
         focusedProjectileOnly: Bool,
-        appliesColdSlow: Bool = false
+        appliesColdSlow: Bool = false,
+        displayName: String? = nil
     ) -> Bool {
         guard skill.levelOneValue > 0 else { return false }
         let buff = ActiveSupportSkillBuff(
             id: "support:\(member.slotIndex):\(skill.id)",
-            name: skill.name,
+            name: displayName ?? skill.name,
             supportSlotIndex: member.slotIndex,
             remainingDuration: max(1, skill.cooldown),
             rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
@@ -2335,6 +2389,252 @@ class Battle: ObservableObject {
 
     private func resurrectionHP(for state: BattleSupportState, skill: Skill) -> Int {
         max(1, Int(Double(state.maxHP) * Double(skill.levelOneValue) / 100.0))
+    }
+
+    @discardableResult
+    private func applySupportRetributionStrikeSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        guard skill.damageMultiplier > 0 else { return false }
+
+        let strikeAttack = max(1, Int(Double(modifiedSupportAttack(for: member)) * skill.damageMultiplier))
+        let strikeCount = supportRetributionStrikeHitCount(for: member)
+        var didApply = false
+        var didCrit = false
+
+        for _ in 0..<strikeCount {
+            guard let targetIndex = focusedEnemyArrayIndex else { break }
+            let target = enemyStates[targetIndex]
+            guard !target.isDefeated, target.hp > 0 else { continue }
+
+            let hit = DamageCalculator.calculateResult(
+                attackerATK: strikeAttack,
+                defenderDEF: target.monster.def,
+                critRate: modifiedSupportCritRate,
+                critDamage: 1.5
+            )
+            didApply = true
+            didCrit = didCrit || hit.isCrit
+            let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: hit.amount,
+                isCrit: hit.isCrit,
+                skillName: skill.name,
+                kind: .damage
+            ))
+
+            if defeated {
+                _ = completeEnemy(at: targetIndex)
+                if isOver { break }
+            }
+        }
+
+        guard didApply else { return false }
+        onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: didCrit))
+        if !isOver {
+            _ = triggerChargedTrapExplosionIfNeeded(after: skill)
+        }
+        return true
+    }
+
+    private func supportRetributionStrikeHitCount(for member: PartyMember) -> Int {
+        guard let supportState = supportStates.first(where: { $0.slotIndex == member.slotIndex }) else {
+            return 2
+        }
+        let hpRatio = Double(max(supportState.hp, 0)) / Double(max(supportState.maxHP, 1))
+        switch hpRatio {
+        case ...0.25:
+            return 5
+        case ...0.5:
+            return 4
+        case ...0.75:
+            return 3
+        default:
+            return 2
+        }
+    }
+
+    @discardableResult
+    private func applySupportRapidProjectileSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        guard skill.damageMultiplier > 0 else { return false }
+
+        let minimumSourceProvenProjectileCount = 2
+        let projectileAttack = max(1, Int(Double(modifiedSupportAttack(for: member)) * skill.damageMultiplier))
+        var didApply = false
+        var didCrit = false
+
+        for _ in 0..<minimumSourceProvenProjectileCount {
+            guard let targetIndex = focusedEnemyArrayIndex else { break }
+            let target = enemyStates[targetIndex]
+            guard !target.isDefeated, target.hp > 0 else { continue }
+
+            let hit = DamageCalculator.calculateResult(
+                attackerATK: projectileAttack,
+                defenderDEF: target.monster.def,
+                critRate: modifiedSupportCritRate,
+                critDamage: 1.5
+            )
+            didApply = true
+            didCrit = didCrit || hit.isCrit
+            let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: hit.amount,
+                isCrit: hit.isCrit,
+                skillName: skill.name,
+                kind: .damage
+            ))
+
+            if defeated {
+                _ = completeEnemy(at: targetIndex)
+                if isOver { break }
+            }
+        }
+
+        guard didApply else { return false }
+        onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: didCrit))
+        if !isOver {
+            _ = triggerChargedTrapExplosionIfNeeded(after: skill)
+        }
+        return true
+    }
+
+    @discardableResult
+    private func applySupportPiercingProjectileSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        applySupportRangeDamageSkill(skill, member: member)
+    }
+
+    @discardableResult
+    private func applySupportSkewerShotSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        guard let targetIndex = focusedEnemyArrayIndex, skill.levelOneValue > 0 else { return false }
+        guard enemyStates.indices.contains(targetIndex), !enemyStates[targetIndex].isDefeated else { return false }
+
+        enemyStates[targetIndex].lodgedSkewerArrows += 1
+        let lodgedArrowCount = enemyStates[targetIndex].lodgedSkewerArrows
+        let attackMultiplier = Double(skill.levelOneValue) / 100.0 * Double(lodgedArrowCount)
+        let target = enemyStates[targetIndex]
+        let hit = DamageCalculator.calculateResult(
+            attackerATK: max(1, Int(Double(modifiedSupportAttack(for: member)) * attackMultiplier)),
+            defenderDEF: target.monster.def,
+            critRate: modifiedSupportCritRate,
+            critDamage: 1.5
+        )
+        let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+        log.append(BattleLogEntry(
+            attacker: .support(member.heroClass),
+            damage: hit.amount,
+            isCrit: hit.isCrit,
+            skillName: skill.name,
+            kind: .damage
+        ))
+
+        if defeated {
+            _ = completeEnemy(at: targetIndex)
+        } else if lodgedArrowCount == 3 {
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: 0,
+                isCrit: false,
+                skillName: "\(skill.name)出血",
+                kind: .buff
+            ))
+        }
+
+        onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: hit.isCrit))
+        if !isOver {
+            _ = triggerChargedTrapExplosionIfNeeded(after: skill)
+        }
+        return true
+    }
+
+    @discardableResult
+    private func applySupportShockBoltSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        guard let lodgedTargetIndex = focusedEnemyArrayIndex, skill.levelOneValue > 0 else { return false }
+        guard enemyStates.indices.contains(lodgedTargetIndex), !enemyStates[lodgedTargetIndex].isDefeated else { return false }
+
+        let lightningAttack = max(1, Int(Double(modifiedSupportAttack(for: member)) * Double(skill.levelOneValue) / 100.0))
+        let lodgedTarget = enemyStates[lodgedTargetIndex]
+        let lodgedHit = DamageCalculator.calculateResult(
+            attackerATK: lightningAttack,
+            defenderDEF: lodgedTarget.monster.def,
+            critRate: modifiedSupportCritRate,
+            critDamage: 1.5
+        )
+        let lodgedDefeated = damageEnemy(at: lodgedTargetIndex, amount: lodgedHit.amount)
+        log.append(BattleLogEntry(
+            attacker: .support(member.heroClass),
+            damage: lodgedHit.amount,
+            isCrit: lodgedHit.isCrit,
+            skillName: skill.name,
+            kind: .damage
+        ))
+
+        if lodgedDefeated {
+            _ = completeEnemy(at: lodgedTargetIndex)
+            if isOver {
+                onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: lodgedHit.isCrit))
+                return true
+            }
+        }
+
+        _ = activateSupportSustainedDamageBuff(
+            for: skill,
+            member: member,
+            focusedProjectileOnly: false,
+            displayName: "\(skill.name)电流"
+        )
+        log.append(BattleLogEntry(
+            attacker: .support(member.heroClass),
+            damage: 0,
+            isCrit: false,
+            skillName: "\(skill.name)电流",
+            kind: .buff
+        ))
+
+        if !isOver {
+            _ = triggerChargedTrapExplosionIfNeeded(after: skill)
+        }
+        onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: lodgedHit.isCrit))
+        return true
+    }
+
+    @discardableResult
+    private func applySupportCrushingBlowSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        guard skill.damageMultiplier > 0, let target = activeEnemyState else { return false }
+
+        let hit = DamageCalculator.calculateResult(
+            attackerATK: max(1, Int(Double(modifiedSupportAttack(for: member)) * skill.damageMultiplier)),
+            defenderDEF: target.monster.def,
+            critRate: modifiedSupportCritRate,
+            critDamage: 1.5
+        )
+        let defeatedIndex = focusedEnemyArrayIndex
+        let defeated = damageFocusedEnemy(hit.amount)
+        log.append(BattleLogEntry(
+            attacker: .support(member.heroClass),
+            damage: hit.amount,
+            isCrit: hit.isCrit,
+            skillName: skill.name,
+            kind: .damage
+        ))
+        onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: hit.isCrit))
+
+        if defeated {
+            _ = completeFocusedEnemyIfNeeded()
+            if !isOver {
+                applyCrushingBlowShockwave(
+                    excluding: defeatedIndex,
+                    attacker: .support(member.heroClass),
+                    attackPower: modifiedSupportAttack(for: member),
+                    critRate: modifiedSupportCritRate,
+                    critDamage: 1.5
+                )
+            }
+        }
+
+        if !isOver {
+            _ = triggerChargedTrapExplosionIfNeeded(after: skill)
+        }
+        return true
     }
 
     @discardableResult
@@ -2498,6 +2798,11 @@ class Battle: ObservableObject {
             .filter { $0.activation == .continuous }
     }
 
+    private func supportAttackCountSkills(for member: PartyMember) -> [Skill] {
+        supportActiveSkills(for: member)
+            .filter { $0.activation == .baseAttackCount }
+    }
+
     private func supportActiveSkills(for member: PartyMember) -> [Skill] {
         activeSkillLoadouts.activeSkills(
             for: member.heroClass,
@@ -2522,6 +2827,29 @@ class Battle: ObservableObject {
             return skill
         }
         return nil
+    }
+
+    private func readyAttackCountSupportSkill(for member: PartyMember) -> Skill? {
+        let skills = supportAttackCountSkills(for: member)
+        guard !skills.isEmpty else { return nil }
+
+        let supportAttackCount = supportBaseAttackCounts[member.slotIndex] ?? 0
+        let startIndex = nextSupportAttackCountSkillIndexes[member.slotIndex] ?? 0
+        for offset in 0..<skills.count {
+            let index = (startIndex + offset) % skills.count
+            let skill = skills[index]
+            let triggerEvery = max(1, skill.triggerEvery)
+            guard supportAttackCount > 0, supportAttackCount % triggerEvery == 0 else { continue }
+            nextSupportAttackCountSkillIndexes[member.slotIndex] = (index + 1) % skills.count
+            return skill
+        }
+        return nil
+    }
+
+    @discardableResult
+    private func applyTriggeredSupportSkillAfterAttack(for member: PartyMember) -> Bool {
+        guard let skill = readyAttackCountSupportSkill(for: member) else { return false }
+        return applySupportSkill(skill, member: member)
     }
 
     private func isSupportSkillUsableNow(_ skill: Skill, member: PartyMember) -> Bool {

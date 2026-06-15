@@ -683,6 +683,103 @@ import Testing
         #expect(battle.monsterHP < monster.hp)
     }
 
+    @Test func supportAttackCountSkillsTriggerFromSupportAttacks() {
+        let hero = Hero()
+        var party = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        party.setHeroClass(.ranger, atSlot: 1)
+        var loadouts = ActiveSkillLoadouts()
+        loadouts.setSkills(["20101"], for: .ranger)
+        let monster = Monster(
+            id: "support-rapid-fire",
+            name: "支援快速射击训练木桩",
+            hp: 1_000_000,
+            atk: 1,
+            def: 0,
+            spd: 1,
+            critRate: 0,
+            xpReward: 0,
+            goldReward: 0,
+            lootTableID: "none"
+        )
+        let battle = Battle(
+            hero: hero,
+            monster: monster,
+            party: party,
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: loadouts
+        )
+
+        for _ in 0..<20 {
+            battle.update(deltaTime: 1)
+            if battle.log.filter({ $0.attacker == .support(.ranger) && $0.skillName == "快速射击" }).count >= 2 {
+                break
+            }
+        }
+
+        #expect(battle.log.filter {
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == "快速射击" &&
+                $0.kind == .damage
+        }.count >= 2)
+        #expect(!battle.log.contains {
+            $0.attacker == .hero &&
+                $0.skillName == "快速射击"
+        })
+    }
+
+    @Test func supportShockBoltKeepsSupportAttributedCurrentDamage() {
+        let hero = Hero()
+        var party = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        party.setHeroClass(.hunter, atSlot: 1)
+        var loadouts = ActiveSkillLoadouts()
+        loadouts.setSkills(["50601"], for: .hunter)
+        let monsters = (1...3).map { index in
+            Monster(
+                id: "support-shock-bolt-\(index)",
+                name: "支援电击弩箭训练 \(index)",
+                hp: 1_000_000,
+                atk: 1,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            )
+        }
+        let battle = Battle(
+            hero: hero,
+            monsters: monsters,
+            party: party,
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: loadouts
+        )
+
+        for _ in 0..<30 {
+            battle.update(deltaTime: 1)
+            if battle.log.contains(where: {
+                $0.attacker == .support(.hunter) &&
+                    $0.skillName == "电击弩箭电流" &&
+                    $0.kind == .damage
+            }) {
+                break
+            }
+        }
+
+        #expect(battle.activeBuffNames.contains("电击弩箭电流"))
+        #expect(PlayerBattleStatusBadge.visible(for: battle).contains(.shockCurrent))
+        #expect(battle.log.contains {
+            $0.attacker == .support(.hunter) &&
+                $0.skillName == "电击弩箭" &&
+                $0.kind == .damage
+        })
+        #expect(battle.log.filter {
+            $0.attacker == .support(.hunter) &&
+                $0.skillName == "电击弩箭电流" &&
+                $0.kind == .damage
+        }.count >= 3)
+    }
+
     @Test func heroCooldownSkillExecutesInBattle() {
         let hero = Hero()
         let monster = Monster(

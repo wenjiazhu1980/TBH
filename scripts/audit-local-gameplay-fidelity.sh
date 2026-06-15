@@ -468,6 +468,17 @@ support_sustained_skill_runtime = (
     and 'skill.id == "30401" || skill.id == "50501"' in battle_source
     and 'skill.id == "30501"' in battle_source
 )
+support_attack_count_skill_runtime = (
+    "supportBaseAttackCounts" in battle_source
+    and "nextSupportAttackCountSkillIndexes" in battle_source
+    and "supportAttackCountSkills" in battle_source
+    and "readyAttackCountSupportSkill" in battle_source
+    and "applyTriggeredSupportSkillAfterAttack" in battle_source
+    and "applySupportRapidProjectileSkill" in battle_source
+    and "applySupportShockBoltSkill" in battle_source
+    and 'skill.id == "20101"' in battle_source
+    and 'skill.id == "50601"' in battle_source
+)
 if not source_progression_runtime_selector:
     issues.append("SourceItemCatalog must expose runtime source gear progression selection")
 if not loot_uses_source_progression_identity:
@@ -476,6 +487,8 @@ if not synthesis_preview_uses_source_progression:
     issues.append("SynthesisPreview must expose checked source base gear progression identity")
 if not support_sustained_skill_runtime:
     issues.append("Battle must keep support-member sustained summon/range skill state for Hydra/Snowstorm/Turret")
+if not support_attack_count_skill_runtime:
+    issues.append("Battle must keep support-member attack-count skill state for modeled BASEATTACK_COUNT skills")
 
 source_gear_rows = tsv_lines(item_source, "sourceGearTypeTSV")
 source_gear_entries = []
@@ -740,6 +753,7 @@ print("rune_dependency_edges=" + ",".join(f"{source}->{target}" for source, targ
 print("runtime_source_gear_progression_names=" + ("enabled" if source_progression_runtime_selector and loot_uses_source_progression_identity else "missing"))
 print("synthesis_preview_source_progression=" + ("enabled" if synthesis_preview_uses_source_progression else "missing"))
 print("support_sustained_skill_runtime=" + ("enabled" if support_sustained_skill_runtime else "missing"))
+print("support_attack_count_skill_runtime=" + ("enabled" if support_attack_count_skill_runtime else "missing"))
 print("source_gear_rarity_counts=" + ",".join(f"{key}:{source_gear_rarity_counts[key]}" for key in sorted(source_gear_rarity_counts)))
 print("source_material_category_counts=" + ",".join(f"{key}:{source_material_category_counts[key]}" for key in sorted(source_material_category_counts)))
 print("source_material_rarity_counts=" + ",".join(f"{key}:{source_material_rarity_counts[key]}" for key in sorted(source_material_rarity_counts)))
