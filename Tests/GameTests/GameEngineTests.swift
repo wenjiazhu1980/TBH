@@ -453,13 +453,13 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
     @Test func unyieldingWillIsConsumedAcrossRestartedBattlesInSameStage() throws {
         let engine = makeEngine()
-        engine.progress.currentChapterIndex = 2
-        engine.progress.currentDifficultyIndex = 3
-        engine.progress.currentStageIndex = 8
+        engine.progress.currentStageIndex = 9
+        engine.progress.soulStones.grant(.normal)
         engine.activeSkillLoadouts.setSkills(["10601"], for: .knight)
         engine.setHeroClass(.knight)
 
         let firstBattle = try #require(engine.currentBattle)
+        #expect(firstBattle.monsterCount == 1)
         let firstBattleSkillIDs = firstBattle.activeSkillLoadouts
             .activeSkills(for: .knight, heroLevel: engine.hero.level, slotCount: 1)
             .map(\.id)
