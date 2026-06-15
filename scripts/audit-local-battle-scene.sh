@@ -802,7 +802,7 @@ if check_party_layout:
     min_primary_steel_pixels = max(120, int(scene_width * scene_height * 0.012))
     min_party_centroid_gap = scene_width * 0.12
     min_stage_pill_text_pixels = 24
-    min_stage_pill_dark_pixels = max(180, int(scene_width * scene_height * 0.010))
+    min_stage_pill_dark_pixels = max(180, int(scene_width * scene_height * 0.0075))
     min_main_hp_pixels = max(80, int(scene_width * scene_height * 0.006))
     min_support_hp_pixels = max(60, int(scene_width * scene_height * 0.0015))
     min_enemy_hp_frame_span = scene_width * 0.10
