@@ -347,14 +347,14 @@ enum ResourceSelfTest {
             )
         }
 
-        let cornerAlphaValues = [
-            bitmap.colorAt(x: 0, y: 0)?.alphaComponent ?? 1,
-            bitmap.colorAt(x: width - 1, y: 0)?.alphaComponent ?? 1,
-            bitmap.colorAt(x: 0, y: height - 1)?.alphaComponent ?? 1,
-            bitmap.colorAt(x: width - 1, y: height - 1)?.alphaComponent ?? 1
+        let cornerAlphaValues: [CGFloat] = [
+            alphaComponent(in: bitmap, x: 0, y: 0),
+            alphaComponent(in: bitmap, x: width - 1, y: 0),
+            alphaComponent(in: bitmap, x: 0, y: height - 1),
+            alphaComponent(in: bitmap, x: width - 1, y: height - 1)
         ]
 
-        guard cornerAlphaValues.allSatisfy({ $0 == 0 }) else {
+        guard cornerAlphaValues.allSatisfy({ $0 == 0.0 }) else {
             return SpriteIssue(
                 name: heroClass.rawValue,
                 message: "battle sprite \(spriteName) must keep all four corners transparent"
@@ -584,14 +584,27 @@ enum ResourceSelfTest {
     }
 
     private static func spritePixel(in bitmap: NSBitmapImageRep, x: Int, y: Int) -> SpritePixel {
-        var samples = [UInt](repeating: 0, count: max(bitmap.samplesPerPixel, 4))
+        var samples = [Int](repeating: 0, count: max(bitmap.samplesPerPixel, 4))
         bitmap.getPixel(&samples, atX: x, y: y)
         return SpritePixel(
-            red: Int(samples[0]),
-            green: Int(samples[1]),
-            blue: Int(samples[2]),
-            alpha: bitmap.hasAlpha ? Int(samples[min(3, samples.count - 1)]) : 255
+            red: samples[0],
+            green: samples[1],
+            blue: samples[2],
+            alpha: bitmap.hasAlpha ? samples[min(3, samples.count - 1)] : 255
         )
+    }
+
+    private static func alphaComponent(
+        in bitmap: NSBitmapImageRep,
+        x: Int,
+        y: Int,
+        defaultValue: CGFloat = 1.0
+    ) -> CGFloat {
+        guard let color = bitmap.colorAt(x: x, y: y) else {
+            return defaultValue
+        }
+
+        return color.alphaComponent
     }
 
     private static func removeConnectedOfficialHeroPortraitFrame(from source: SpritePixels) -> SpritePixels {
@@ -1017,14 +1030,14 @@ enum ResourceSelfTest {
             )
         }
 
-        let cornerAlphaValues = [
-            bitmap.colorAt(x: 0, y: 0)?.alphaComponent ?? 1,
-            bitmap.colorAt(x: bitmap.pixelsWide - 1, y: 0)?.alphaComponent ?? 1,
-            bitmap.colorAt(x: 0, y: bitmap.pixelsHigh - 1)?.alphaComponent ?? 1,
-            bitmap.colorAt(x: bitmap.pixelsWide - 1, y: bitmap.pixelsHigh - 1)?.alphaComponent ?? 1
+        let cornerAlphaValues: [CGFloat] = [
+            alphaComponent(in: bitmap, x: 0, y: 0),
+            alphaComponent(in: bitmap, x: bitmap.pixelsWide - 1, y: 0),
+            alphaComponent(in: bitmap, x: 0, y: bitmap.pixelsHigh - 1),
+            alphaComponent(in: bitmap, x: bitmap.pixelsWide - 1, y: bitmap.pixelsHigh - 1)
         ]
 
-        guard cornerAlphaValues.allSatisfy({ $0 == 0 }) else {
+        guard cornerAlphaValues.allSatisfy({ $0 == 0.0 }) else {
             return SpriteIssue(
                 name: equipmentType.rawValue,
                 message: "item sprite \(spriteName) appears to include inventory frame edges instead of transparent padding"
