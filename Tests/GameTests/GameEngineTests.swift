@@ -295,7 +295,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TBHTests-\(UUID().uuidString)", isDirectory: true)
         let manager = SaveManager(directory: tempDir)
-        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        let engine = GameEngine(saveManager: manager, audio: SaveRoundTripRecordingAudio())
         engine.start()
 
         engine.setPartyMember(slotIndex: 1, heroClass: .sorcerer)
@@ -328,7 +328,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TBHTests-\(UUID().uuidString)", isDirectory: true)
         let manager = SaveManager(directory: tempDir)
-        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        let engine = GameEngine(saveManager: manager, audio: SaveRoundTripRecordingAudio())
         engine.start()
 
         engine.hero.gainGold(200_000)
@@ -579,7 +579,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(loaded.progress.soulStones.count(for: .normal) == 1)
         #expect(loaded.progress.chests.count(for: .normal) == 1)
 
-        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        let engine = GameEngine(saveManager: manager, audio: SaveRoundTripRecordingAudio())
         engine.start()
         engine.stop()
         #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus)
