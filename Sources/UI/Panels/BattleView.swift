@@ -1064,7 +1064,7 @@ struct BattleSceneView: View {
         }
         switch monsterID {
         case "slime_green", "slime_blue":
-            return CGSize(width: 38, height: 48)
+            return CGSize(width: 46, height: 28)
         default:
             return CGSize(width: 50, height: 60)
         }

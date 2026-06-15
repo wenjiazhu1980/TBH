@@ -127,7 +127,7 @@ enum GameArt {
 
         switch monsterID {
         case "slime_green", "slime_blue":
-            return "monster_slime_red"
+            return "official_monster_slime"
         default:
             return monsterSpriteName(for: monsterID)
         }

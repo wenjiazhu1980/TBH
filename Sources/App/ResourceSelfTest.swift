@@ -819,6 +819,7 @@ enum ResourceSelfTest {
         var sampledMonsterNames = Set<String>()
         var missingSpriteContexts: [String: [String]] = [:]
         var slimeFallbackContexts: [String] = []
+        var legacyUICropContexts: [String] = []
         var bossMismatchContexts: [String] = []
 
         for stage in StageDefinition.all {
@@ -843,6 +844,13 @@ enum ResourceSelfTest {
                          spriteName == "monster_slime_red" ||
                          spriteName == "official_monster_slime") {
                         slimeFallbackContexts.append("\(context) -> \(spriteName)")
+                    }
+
+                    if spriteName == "monster_slime_red" ||
+                        spriteName == "monster_skeleton_boss" ||
+                        spriteName == "boss_golden" ||
+                        spriteName == "boss_demon" {
+                        legacyUICropContexts.append("\(context) -> \(spriteName)")
                     }
 
                     if stage.isBoss,
@@ -877,6 +885,15 @@ enum ResourceSelfTest {
                 SpriteIssue(
                     name: "StageMonsterArt",
                     message: "non-slime stage monsters must not use slime art fallback: \(sampleContexts(slimeFallbackContexts))"
+                )
+            )
+        }
+
+        if !legacyUICropContexts.isEmpty {
+            issues.append(
+                SpriteIssue(
+                    name: "StageMonsterArt",
+                    message: "stage battle monsters must not use legacy full-screenshot UI crops: \(sampleContexts(legacyUICropContexts))"
                 )
             )
         }

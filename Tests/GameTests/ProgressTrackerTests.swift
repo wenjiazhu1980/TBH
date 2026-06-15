@@ -236,6 +236,7 @@ import Testing
     @Test func stageCompositionMonsterArtAvoidsSlimeFallback() {
         var sampledCompositionNames = Set<String>()
         var slimeFallbacks: [String] = []
+        var legacyUICropMappings: [String] = []
 
         for stage in StageDefinition.all {
             for difficulty in Difficulty.allCases {
@@ -248,12 +249,16 @@ import Testing
                     if monster.name != "史莱姆" && (monster.id == "slime_green" || spriteName == "monster_slime_red" || spriteName == "official_monster_slime") {
                         slimeFallbacks.append("\(stage.displayCode) \(difficulty.name) \(monster.name)")
                     }
+                    if ["monster_slime_red", "monster_skeleton_boss", "boss_golden", "boss_demon"].contains(spriteName) {
+                        legacyUICropMappings.append("\(stage.displayCode) \(difficulty.name) \(monster.name) -> \(spriteName)")
+                    }
                 }
             }
         }
 
         #expect(sampledCompositionNames.count == 49)
         #expect(slimeFallbacks.isEmpty, "Non-slime composition monsters should not use slime art fallback: \(slimeFallbacks.sorted().joined(separator: ", "))")
+        #expect(legacyUICropMappings.isEmpty, "Stage battle monster art should not use legacy full-screenshot UI crops: \(legacyUICropMappings.sorted().joined(separator: ", "))")
     }
 
     @Test func stageSpawnUsesMinedRuntimeData() {
@@ -272,6 +277,7 @@ import Testing
         let firstStageOpeningState = StageDefinition.stage(act: .forest, number: 1).encounterState(for: .normal, encounterIndex: 0)
         let firstStageFinalState = StageDefinition.stage(act: .forest, number: 1).encounterState(for: .normal, encounterIndex: 9)
         #expect(firstStageSecondEncounter.name == "史莱姆")
+        #expect(GameArt.battleMonsterSpriteName(for: firstStageSecondEncounter.id) == "official_monster_slime")
         #expect(firstStageSeventhEncounter.name == "哥布林")
         #expect(firstStageOverflowEncounter.name == "哥布林")
         #expect(firstStageOpeningState.wave == 1)

@@ -47,8 +47,8 @@
 ### 战斗怪物精灵
 | 文件名 | 类型 | 尺寸 | 说明 |
 |--------|------|------|------|
-| monster_skeleton_boss.png | 骷髅Boss | 360x360 | 清晰的骷髅战士 |
-| monster_slime_red.png | 红色史莱姆 | 120x200 | 可用于所有史莱姆变体 |
+| monster_skeleton_boss.png | 骷髅Boss旧裁片 | 360x360 | 旧参考素材，包含完整背景，不得用于运行时战斗怪物 |
+| monster_slime_red.png | 红色史莱姆旧裁片 | 120x200 | 旧参考素材，包含战斗背景和相邻角色碎片，不得用于运行时战斗怪物 |
 | boss_demon.png | 恶魔Boss | 240x260 | |
 | boss_golden.png | 黄金Boss | 240x240 | |
 
@@ -80,7 +80,8 @@
 - `ResourceSelfTest` 会遍历 `StageDefinition.all`、全部难度和每个 encounter，从真实运行期 `spawnMonster` 结果验证战斗图映射
 - 自测必须采样到当前挖掘表中的 49 个关卡怪物名称，避免新怪物只进入数据表但没有进入美术映射
 - 每个 `GameArt.battleMonsterSpriteName(for:)` 结果都必须能从打包资源加载
-- 非史莱姆关卡怪物不得回落到 `monster_slime_red` 或 `official_monster_slime`
+- 任何运行时关卡怪物不得回落到 `monster_slime_red`、`monster_skeleton_boss`、`boss_golden` 或 `boss_demon` 这类旧全截图裁片；史莱姆战斗图使用透明的 `official_monster_slime`
+- 非史莱姆关卡怪物不得回落到 `official_monster_slime`
 - 三个 Act Boss 必须分别映射到 `stage_monster_skeleton_king`、`stage_monster_sibuna`、`stage_monster_voidcaller`
 
 ### 物品图标 (20个)

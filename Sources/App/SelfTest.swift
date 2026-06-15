@@ -3284,6 +3284,10 @@ enum SelfTest {
             "stage 1101 spawn selection follows monster composition by encounter index"
         )
         expect(
+            GameArt.battleMonsterSpriteName(for: firstStageSecondEncounter.id) == "official_monster_slime",
+            "slime encounters use the clean transparent official slime sprite instead of the legacy battle UI crop"
+        )
+        expect(
             firstStageOpeningState.wave == 1 &&
                 firstStageOpeningState.waveCount == 10 &&
                 firstStageOpeningState.encounterNumber == 1 &&
@@ -3336,6 +3340,7 @@ enum SelfTest {
         expect(finalBossRuntime.monsterComposition == [StageMonsterSpawn(name: "执政官莫尔卡", count: 1, isStageLeader: true)], "stage 4310 boss composition matches drops tool")
         var sampledCompositionNames = Set<String>()
         var slimeFallbacks: [String] = []
+        var legacyUICropMappings: [String] = []
         for stage in StageDefinition.all {
             for difficulty in Difficulty.allCases {
                 let target = stage.clearTarget(for: difficulty)
@@ -3346,11 +3351,15 @@ enum SelfTest {
                     if monster.name != "史莱姆" && (monster.id == "slime_green" || spriteName == "monster_slime_red" || spriteName == "official_monster_slime") {
                         slimeFallbacks.append("\(stage.displayCode) \(difficulty.name) \(monster.name)")
                     }
+                    if ["monster_slime_red", "monster_skeleton_boss", "boss_golden", "boss_demon"].contains(spriteName) {
+                        legacyUICropMappings.append("\(stage.displayCode) \(difficulty.name) \(monster.name) -> \(spriteName)")
+                    }
                 }
             }
         }
         expect(sampledCompositionNames.count == 49, "all 49 stage composition monster names are sampled")
         expect(slimeFallbacks.isEmpty, "all non-slime stage composition monsters avoid slime art fallback: \(slimeFallbacks.sorted().joined(separator: ", "))")
+        expect(legacyUICropMappings.isEmpty, "stage battle monster art avoids legacy full-screenshot UI crops: \(legacyUICropMappings.sorted().joined(separator: ", "))")
 
         var tracker = ProgressTracker()
         tracker.advance()
