@@ -14,6 +14,7 @@ enum BattleSceneSnapshot {
         case slamJump
         case earthquakeImpact
         case shockwaveImpact
+        case chaosBurst
         case healUtility
         case resurrectionUtility
         case shieldUtility
@@ -373,6 +374,17 @@ private enum BattleSceneSnapshotFixture {
                     isCrit: false,
                     skillName: "粉碎强击冲击波",
                     kind: .damage
+                )
+            )
+        case .chaosBurst:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .hero,
+                    damage: 777,
+                    isCrit: false,
+                    kind: .damage,
+                    damageElement: .chaos,
+                    delivery: .range
                 )
             )
         case .healUtility:

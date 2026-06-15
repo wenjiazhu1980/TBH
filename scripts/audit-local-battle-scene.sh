@@ -19,6 +19,7 @@ shield_charge_screenshot_path="$tmpdir/tbh-local-battle-scene-shield-charge.png"
 slam_jump_screenshot_path="$tmpdir/tbh-local-battle-scene-slam-jump.png"
 earthquake_impact_screenshot_path="$tmpdir/tbh-local-battle-scene-earthquake-impact.png"
 shockwave_impact_screenshot_path="$tmpdir/tbh-local-battle-scene-shockwave-impact.png"
+chaos_burst_screenshot_path="$tmpdir/tbh-local-battle-scene-chaos-burst.png"
 heal_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-heal-utility.png"
 resurrection_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-resurrection-utility.png"
 shield_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-shield-utility.png"
@@ -81,6 +82,9 @@ render_battle_scene_snapshot() {
   env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
     swift run --disable-sandbox TBH --render-battle-scene "$shockwave_impact_screenshot_path" --render-battle-scene-time 0 \
       --render-battle-scene-fixture shockwaveImpact >/dev/null
+  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
+    swift run --disable-sandbox TBH --render-battle-scene "$chaos_burst_screenshot_path" --render-battle-scene-time 0 \
+      --render-battle-scene-fixture chaosBurst >/dev/null
   env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
     swift run --disable-sandbox TBH --render-battle-scene "$heal_utility_screenshot_path" --render-battle-scene-time 0 \
       --render-battle-scene-fixture healUtility >/dev/null
@@ -176,6 +180,10 @@ analyze_screenshot() {
   if [[ "$rendered_snapshot" == "1" ]]; then
     shockwave_impact_path="$shockwave_impact_screenshot_path"
   fi
+  local chaos_burst_path="${CHAOS_BURST_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    chaos_burst_path="$chaos_burst_screenshot_path"
+  fi
   local heal_utility_path="${HEAL_UTILITY_SCREENSHOT_PATH:-}"
   if [[ "$rendered_snapshot" == "1" ]]; then
     heal_utility_path="$heal_utility_screenshot_path"
@@ -212,6 +220,7 @@ analyze_screenshot() {
     TBH_SLAM_JUMP_SCREENSHOT_PATH="$slam_jump_path" \
     TBH_EARTHQUAKE_IMPACT_SCREENSHOT_PATH="$earthquake_impact_path" \
     TBH_SHOCKWAVE_IMPACT_SCREENSHOT_PATH="$shockwave_impact_path" \
+    TBH_CHAOS_BURST_SCREENSHOT_PATH="$chaos_burst_path" \
     TBH_HEAL_UTILITY_SCREENSHOT_PATH="$heal_utility_path" \
     TBH_RESURRECTION_UTILITY_SCREENSHOT_PATH="$resurrection_utility_path" \
     TBH_UTILITY_SCREENSHOT_PATH="$utility_path" \
@@ -372,6 +381,7 @@ damage_shield_charge_pixels = 0
 damage_slam_jump_pixels = 0
 damage_earthquake_pixels = 0
 damage_shockwave_pixels = 0
+damage_chaos_pixels = 0
 utility_heal_pixels = 0
 utility_resurrection_pixels = 0
 utility_shield_pixels = 0
@@ -643,6 +653,28 @@ if check_party_layout:
             and not is_hp_green(red, green, blue)
         ) or (
             red >= 190 and green >= 190 and blue >= 185
+        )
+
+    def is_impact_chaos(red, green, blue):
+        purple = (
+            red >= 130
+            and blue >= 150
+            and 60 <= green <= 190
+            and blue >= green * 1.15
+            and red >= green * 1.05
+        )
+        green_flare = (
+            green >= 145
+            and 35 <= red <= 130
+            and 80 <= blue <= 200
+            and green > red * 1.45
+            and green > blue * 1.10
+        )
+        return (
+            (purple or green_flare)
+            and not is_dark_backdrop(red, green, blue)
+            and not is_warm_ground_color(red, green, blue)
+            and not is_hp_green(red, green, blue)
         )
 
     def is_charge_dash_light(red, green, blue):
@@ -1199,6 +1231,26 @@ if check_party_layout:
             )
             sys.exit(1)
 
+    chaos_burst_path = os.environ.get("TBH_CHAOS_BURST_SCREENSHOT_PATH", "")
+    if chaos_burst_path:
+        damage_chaos_pixels, _ = count_changed_utility_pixels(
+            chaos_burst_path,
+            "chaos-burst",
+            is_impact_chaos,
+            x_start_ratio=0.38,
+            x_end_ratio=0.78,
+            y_start_ratio=0.24,
+            y_end_ratio=0.90,
+        )
+        min_damage_chaos_pixels = max(18, int(scene_width * scene_height * 0.0007))
+        if damage_chaos_pixels < min_damage_chaos_pixels:
+            print(
+                "chaos impact cue is missing from the mid/enemy lane: "
+                f"damage_chaos_pixels={damage_chaos_pixels}, min={min_damage_chaos_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     heal_utility_path = os.environ.get("TBH_HEAL_UTILITY_SCREENSHOT_PATH", "")
     if heal_utility_path:
         utility_heal_pixels, _ = count_changed_utility_pixels(
@@ -1331,6 +1383,8 @@ if check_party_layout:
         print(f"damage_earthquake_pixels={damage_earthquake_pixels}")
     if os.environ.get("TBH_SHOCKWAVE_IMPACT_SCREENSHOT_PATH", ""):
         print(f"damage_shockwave_pixels={damage_shockwave_pixels}")
+    if os.environ.get("TBH_CHAOS_BURST_SCREENSHOT_PATH", ""):
+        print(f"damage_chaos_pixels={damage_chaos_pixels}")
     if os.environ.get("TBH_HEAL_UTILITY_SCREENSHOT_PATH", ""):
         print(f"utility_heal_pixels={utility_heal_pixels}")
     if os.environ.get("TBH_RESURRECTION_UTILITY_SCREENSHOT_PATH", ""):

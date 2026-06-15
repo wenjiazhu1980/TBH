@@ -359,7 +359,8 @@ enum SelfTest {
             .shieldCharge,
             .slamJump,
             .earthquakeImpact,
-            .shockwaveImpact
+            .shockwaveImpact,
+            .chaosBurst
         ]
         let utilityFixtures: [BattleSceneSnapshot.Fixture] = [
             .healUtility,
