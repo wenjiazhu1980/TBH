@@ -28,11 +28,13 @@ import Testing
             tracker.advance()
         }
 
-        #expect(tracker.selectStage(difficulty: .normal, chapter: .forest, stageNumber: 1))
+        let selectedCurrentStage = tracker.selectStage(difficulty: .normal, chapter: .forest, stageNumber: 1)
+        #expect(selectedCurrentStage)
         #expect(tracker.currentStage.displayCode == "1-1")
         #expect(tracker.highestUnlockedStage.displayCode == "1-2")
         #expect(tracker.canSelectStage(difficulty: .normal, chapter: .forest, stageNumber: 2))
-        #expect(!tracker.selectStage(difficulty: .normal, chapter: .forest, stageNumber: 3))
+        let selectedLockedStage = tracker.selectStage(difficulty: .normal, chapter: .forest, stageNumber: 3)
+        #expect(!selectedLockedStage)
         #expect(tracker.currentStage.displayCode == "1-1")
     }
 

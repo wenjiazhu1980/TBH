@@ -1597,7 +1597,7 @@ import Testing
         #expect(battle.activeBuffNames.contains("旋转斧"))
         #expect(battle.log.filter { $0.skillName == "旋转斧" && $0.kind == .damage }.count >= 3)
         #expect(battle.enemyStates.allSatisfy { $0.hp < $0.maxHP })
-        #expect(battle.enemyStates.allSatisfy(\.isBleeding))
+        #expect(battle.enemyStates.allSatisfy { $0.isBleeding })
         #expect(battle.enemyStates.allSatisfy { EnemyStatusBadge.visible(for: $0).contains(.bleeding) })
         #expect(battle.log.filter { $0.skillName == "旋转斧出血" && $0.kind == .buff }.count >= 3)
     }

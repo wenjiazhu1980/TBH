@@ -2,6 +2,12 @@ import Testing
 import Foundation
 @testable import TBH
 
+private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
+    var isEnabled = true
+
+    func play(_ event: GameAudioEvent) {}
+}
+
 @Suite struct ItemContractTests {
     @Test func equalItemsHaveEqualHashes() {
         // == 只比较 id，hash 必须遵守同样的契约
@@ -270,7 +276,7 @@ import Foundation
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TBHTests-\(UUID().uuidString)", isDirectory: true)
         let manager = SaveManager(directory: tempDir)
-        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        let engine = GameEngine(saveManager: manager, audio: SaveRoundTripRecordingAudio())
         engine.start()
 
         engine.setHeroClass(.priest)

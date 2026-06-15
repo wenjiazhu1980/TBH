@@ -145,7 +145,7 @@ import Foundation
         #expect(inventory.items.isEmpty)
     }
 
-    @Test func lockedItemCannotBeDiscarded() {
+    @Test func lockedItemCannotBeDiscarded() throws {
         let inventory = Inventory()
         let item = Item(id: "lock1", name: "保留剑", rarity: .arcana, slot: .weapon, stats: ItemStats(bonusATK: 12), description: "")
         inventory.add(item)
