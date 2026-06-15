@@ -4,7 +4,7 @@
 """
 import os
 from collections import Counter, deque
-from PIL import Image
+from PIL import Image, ImageDraw
 
 STEAM_DIR = "Resources/Assets.xcassets/steam_source"
 OUTPUT_DIR = "Sources/Resources/Extracted"
@@ -207,6 +207,144 @@ def save_item_icon_from_inventory(img, name, box, canvas_size=32, padding=2):
     print(f"  ✓ {name} ({canvas.width}x{canvas.height})")
     return canvas
 
+def save_clean_equipment_icon(name, equipment_type):
+    """生成清洁的 32x32 透明像素装备图标。
+
+    Steam 截图只提供嵌在背包 UI 里的小图，直接裁切会带入格线、相邻物品
+    和面板碎片。这里保留原版 20 种装备类型的分类语义，生成独立透明图标，
+    让运行时背包格不再显示脏截图块。
+    """
+    img = Image.new("RGBA", (32, 32), (255, 255, 255, 0))
+    d = ImageDraw.Draw(img)
+
+    outline = (34, 31, 28, 255)
+    metal = (222, 226, 218, 255)
+    metal_dark = (130, 139, 145, 255)
+    gold = (238, 174, 50, 255)
+    gold_dark = (139, 83, 24, 255)
+    wood = (132, 82, 37, 255)
+    leather = (116, 72, 45, 255)
+    red = (218, 50, 44, 255)
+    blue = (54, 137, 220, 255)
+    green = (66, 184, 88, 255)
+    purple = (151, 82, 226, 255)
+    cyan = (86, 212, 226, 255)
+
+    def line(points, fill, width=2):
+        d.line(points, fill=outline, width=width + 2, joint="curve")
+        d.line(points, fill=fill, width=width, joint="curve")
+
+    def rect(box, fill, border=outline):
+        d.rectangle(box, fill=border)
+        x1, y1, x2, y2 = box
+        d.rectangle((x1 + 1, y1 + 1, x2 - 1, y2 - 1), fill=fill)
+
+    def polygon(points, fill, border=outline):
+        d.polygon(points, fill=border)
+        cx = sum(x for x, _ in points) / len(points)
+        cy = sum(y for _, y in points) / len(points)
+        inner = []
+        for x, y in points:
+            nx = round(cx + (x - cx) * 0.78)
+            ny = round(cy + (y - cy) * 0.78)
+            inner.append((nx, ny))
+        d.polygon(inner, fill=fill)
+
+    def ellipse(box, fill, border=outline):
+        d.ellipse(box, fill=border)
+        x1, y1, x2, y2 = box
+        d.ellipse((x1 + 2, y1 + 2, x2 - 2, y2 - 2), fill=fill)
+
+    if equipment_type == "sword":
+        polygon([(22, 3), (26, 6), (12, 23), (9, 20)], metal)
+        line([(7, 25), (13, 19)], gold, 3)
+        line([(8, 17), (16, 25)], gold_dark, 2)
+    elif equipment_type == "bow":
+        d.arc((4, 3, 24, 29), -78, 78, fill=outline, width=5)
+        d.arc((6, 5, 22, 27), -78, 78, fill=wood, width=3)
+        line([(19, 6), (19, 26)], metal, 1)
+        line([(8, 17), (25, 17)], gold, 2)
+        polygon([(25, 17), (20, 14), (21, 20)], metal)
+    elif equipment_type == "staff":
+        line([(10, 28), (19, 5)], wood, 3)
+        ellipse((15, 2, 25, 12), purple)
+        d.point((18, 5), fill=(245, 220, 255, 255))
+    elif equipment_type == "scepter":
+        line([(11, 27), (17, 8)], gold_dark, 3)
+        polygon([(17, 3), (24, 8), (20, 15), (13, 10)], cyan)
+        rect((8, 24, 15, 28), gold)
+    elif equipment_type == "crossbow":
+        line([(7, 16), (25, 16)], wood, 3)
+        line([(16, 9), (16, 25)], metal_dark, 3)
+        d.arc((4, 8, 28, 24), 200, 340, fill=outline, width=4)
+        d.arc((6, 10, 26, 22), 200, 340, fill=wood, width=2)
+        polygon([(25, 16), (20, 13), (20, 19)], metal)
+    elif equipment_type == "axe":
+        line([(10, 27), (20, 6)], wood, 3)
+        polygon([(17, 5), (27, 8), (24, 18), (16, 15)], metal)
+        d.rectangle((17, 12, 21, 15), fill=metal_dark)
+    elif equipment_type == "shield":
+        polygon([(16, 3), (27, 8), (25, 21), (16, 29), (7, 21), (5, 8)], blue)
+        line([(16, 7), (16, 24)], cyan, 1)
+    elif equipment_type == "arrow":
+        line([(6, 24), (24, 6)], wood, 2)
+        polygon([(24, 6), (25, 14), (17, 7)], metal)
+        line([(7, 24), (12, 26)], red, 1)
+    elif equipment_type == "orb":
+        ellipse((6, 6, 26, 26), purple)
+        d.ellipse((10, 8, 18, 16), fill=(224, 210, 255, 220))
+        d.rectangle((14, 24, 18, 28), fill=gold)
+    elif equipment_type == "tome":
+        rect((7, 6, 25, 27), red)
+        d.rectangle((11, 8, 13, 25), fill=gold_dark)
+        d.rectangle((16, 12, 22, 14), fill=gold)
+        d.rectangle((16, 17, 21, 19), fill=gold)
+    elif equipment_type == "bolt":
+        polygon([(18, 3), (8, 18), (16, 17), (12, 29), (25, 12), (17, 13)], gold)
+    elif equipment_type == "hatchet":
+        line([(11, 27), (18, 11)], wood, 3)
+        polygon([(16, 8), (26, 11), (23, 19), (15, 16)], metal)
+    elif equipment_type == "helmet":
+        d.pieslice((6, 5, 26, 25), 180, 360, fill=outline)
+        d.pieslice((8, 7, 24, 23), 180, 360, fill=metal)
+        rect((7, 15, 25, 23), metal_dark)
+        d.rectangle((10, 16, 22, 18), fill=outline)
+    elif equipment_type == "armor":
+        polygon([(10, 5), (22, 5), (27, 13), (23, 28), (9, 28), (5, 13)], metal_dark)
+        d.polygon([(13, 8), (19, 8), (21, 25), (11, 25)], fill=metal)
+        line([(16, 8), (16, 25)], blue, 1)
+    elif equipment_type == "gloves":
+        polygon([(7, 13), (14, 9), (18, 18), (12, 25), (6, 22)], leather)
+        polygon([(18, 12), (25, 14), (24, 24), (17, 24), (15, 18)], leather)
+        d.rectangle((9, 22, 14, 27), fill=gold_dark)
+    elif equipment_type == "boots":
+        polygon([(7, 8), (14, 8), (14, 23), (21, 23), (22, 27), (7, 27)], leather)
+        polygon([(18, 6), (25, 6), (25, 21), (29, 21), (29, 25), (18, 25)], leather)
+        d.rectangle((8, 10, 13, 13), fill=gold_dark)
+    elif equipment_type == "amulet":
+        d.arc((7, 3, 25, 23), 20, 160, fill=gold, width=2)
+        polygon([(16, 15), (22, 21), (16, 28), (10, 21)], green)
+    elif equipment_type == "earring":
+        d.arc((8, 5, 24, 25), 20, 330, fill=outline, width=5)
+        d.arc((10, 7, 22, 23), 20, 330, fill=gold, width=3)
+        ellipse((14, 22, 20, 29), cyan)
+    elif equipment_type == "ring":
+        d.ellipse((7, 9, 25, 27), outline=outline, width=5)
+        d.ellipse((9, 11, 23, 25), outline=gold, width=3)
+        polygon([(16, 3), (22, 8), (16, 13), (10, 8)], purple)
+    elif equipment_type == "bracer":
+        polygon([(8, 7), (24, 5), (27, 24), (10, 27)], leather)
+        line([(11, 11), (24, 9)], gold, 2)
+        line([(13, 22), (25, 20)], gold, 2)
+        d.rectangle((15, 13, 21, 19), fill=metal_dark)
+    else:
+        ellipse((8, 8, 24, 24), metal)
+
+    path = os.path.join(OUTPUT_DIR, f"{name}.png")
+    img.save(path, "PNG")
+    print(f"  ✓ {name} ({equipment_type}, {img.width}x{img.height})")
+    return img
+
 def save_battle_hero_from_official(hero_key):
     source = os.path.join(OUTPUT_DIR, f"official_hero_{hero_key}.png")
     if not os.path.exists(source):
@@ -328,37 +466,37 @@ ss02 = Image.open(os.path.join(STEAM_DIR, "ss_02.jpg"))
 w, h = ss02.size
 print(f"  图片尺寸: {w}x{h}")
 
-# ss_02 的装备栏区域包含英雄纸娃娃和边框，不适合直接作为背包图标。
-# 干净的物品格在下方中央背包面板中，原始 1920x1080 截图坐标约为：
-#   左上格 (752, 407)，格距 46px，3 行 x 7 列。
-# 运行时仍保留 item_0_0...item_3_4 这 20 个类型级占位名，按可见背包格
-# row-major 取前 20 个格内 28x28 主体，补透明边距到 32x32。
-inventory_origin_x = int(752 * (w / 1920))
-inventory_origin_y = int(407 * (h / 1080))
-inventory_pitch_x = int(46 * (w / 1920))
-inventory_pitch_y = int(46 * (h / 1080))
-inner_offset_x = int(8 * (w / 1920))
-inner_offset_y = int(8 * (h / 1080))
-inner_size = int(28 * (w / 1920))
-source_cols = 7
-cols = 5
-rows = 4
+# ss_02 的装备图标嵌在背包 UI 里，截图格之间互相遮挡且带有格线、
+# 红点、标签和面板边缘；直接裁切会把这些碎片带进运行时背包。
+# 运行时保留 item_0_0...item_3_4 资源名，但每张图现在对应一个原版
+# 装备类型语义，并以透明像素图标呈现，避免 UI 截图块污染。
+clean_equipment_icons = [
+    ("item_0_0", "sword"),
+    ("item_0_1", "bow"),
+    ("item_0_2", "staff"),
+    ("item_0_3", "scepter"),
+    ("item_0_4", "crossbow"),
+    ("item_1_0", "axe"),
+    ("item_1_1", "shield"),
+    ("item_1_2", "arrow"),
+    ("item_1_3", "orb"),
+    ("item_1_4", "tome"),
+    ("item_2_0", "bolt"),
+    ("item_2_1", "hatchet"),
+    ("item_2_2", "helmet"),
+    ("item_2_3", "armor"),
+    ("item_2_4", "gloves"),
+    ("item_3_0", "boots"),
+    ("item_3_1", "amulet"),
+    ("item_3_2", "earring"),
+    ("item_3_3", "ring"),
+    ("item_3_4", "bracer"),
+]
 
-item_count = 0
-for row in range(rows):
-    for col in range(cols):
-        source_index = row * cols + col
-        source_row = source_index // source_cols
-        source_col = source_index % source_cols
-        x1 = inventory_origin_x + source_col * inventory_pitch_x + inner_offset_x
-        y1 = inventory_origin_y + source_row * inventory_pitch_y + inner_offset_y
-        x2 = x1 + inner_size
-        y2 = y1 + inner_size
+for name, equipment_type in clean_equipment_icons:
+    save_clean_equipment_icon(name, equipment_type)
 
-        save_item_icon_from_inventory(ss02, f"item_{row}_{col}", (x1, y1, x2, y2))
-        item_count += 1
-
-print(f"  共提取 {item_count} 个物品图标")
+print(f"  共生成 {len(clean_equipment_icons)} 个装备类型图标")
 
 # ============================================================
 # 4. UI 元素 (ss_06) — 技能/效果类别图标

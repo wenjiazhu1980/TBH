@@ -69,7 +69,7 @@ import Foundation
         let equipmentTypeIcons = EquipmentType.allCases.map { GameArt.itemIconName(for: $0) }
         let slotIcons = EquipSlot.allCases.map { GameArt.itemIconName(for: $0) }
         #expect(equipmentTypeIcons.allSatisfy { $0.hasPrefix("item_") })
-        #expect(Set(equipmentTypeIcons).count >= 15)
+        #expect(Set(equipmentTypeIcons).count == EquipmentType.allCases.count)
         #expect(Set(equipmentTypeIcons).count > Set(slotIcons).count)
     }
 

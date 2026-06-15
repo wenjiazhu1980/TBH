@@ -16,6 +16,12 @@
 swift build                  # 编译
 swift run TBH                # 运行（菜单栏应用）
 swift run TBH --self-test    # 零依赖自检（DEBUG 构建内置，核心逻辑断言）
+swift run TBH --resource-self-test   # 打包资源 / 图标 / 音效自检
+scripts/audit-local-gameplay-fidelity.sh
+scripts/audit-local-item-icons.sh
+scripts/audit-local-hero-sprites.sh
+scripts/audit-local-sfx.sh
+RENDER_BATTLE_SCENE=1 scripts/audit-local-battle-scene.sh
 ./scripts/package-app.sh     # 打包 dist/TBH.app（release + ad-hoc 签名）
 ```
 
@@ -34,8 +40,10 @@ export TBH_REMOTE_HOST=user@buildmac.local   # 一次性配置
 
 ## CI 远程构建（GitHub Actions）
 
-`.github/workflows/ci.yml` 已配置：push 到 main / PR / 手动触发时，在 macOS runner 上
-build → swift test（完整套件）→ self-test → 打包 TBH.app 并上传 artifact。
+`.github/workflows/ci.yml` 已配置：push 到 main / tag / PR / 手动触发时，在 macOS runner 上
+build → swift test（完整套件）→ self-test → resource-self-test → 本地玩法/装备图标/英雄精灵/音效复核脚本 → 打包 TBH.app 并上传 artifact。
+
+`nightly.yml` 还会运行 `RENDER_BATTLE_SCENE=1 scripts/audit-local-battle-scene.sh`，对 deterministic SwiftUI 战斗场景渲染做像素级回归检查。
 
 启用步骤（本仓库尚未初始化 git）：
 
@@ -52,6 +60,8 @@ git push -u origin main
 - `Tests/GameTests/`（swift-testing）：完整测试套件，**在远程/CI 运行**。
 - `Sources/App/SelfTest.swift`（`--self-test`）：零框架依赖的核心断言子集，**本地可运行**，
   用于本地红绿循环；`#if DEBUG` 包裹，release 构建不包含。
+- `Sources/App/ResourceSelfTest.swift`（`--resource-self-test`）：release-safe 资源自检，覆盖打包图片、音效、运行时资源映射。
+- `scripts/audit-local-*.sh`：本地/CI 复核脚本，覆盖玩法来源覆盖率、装备图标清洁度、音效技术指标、英雄精灵和战斗场景渲染。`audit-local-item-icons.sh` 与 `audit-local-hero-sprites.sh` 需要 Python Pillow。
 
 ## 素材管线
 

@@ -3505,8 +3505,8 @@ enum SelfTest {
         )
         let equipmentTypeIcons = EquipmentType.allCases.map { GameArt.itemIconName(for: $0) }
         let slotIcons = EquipSlot.allCases.map { GameArt.itemIconName(for: $0) }
-        expect(equipmentTypeIcons.allSatisfy { $0.hasPrefix("item_") }, "equipment types use extracted item-grid icons instead of generic slot icons")
-        expect(Set(equipmentTypeIcons).count >= 15 && Set(equipmentTypeIcons).count > Set(slotIcons).count, "equipment type icons are more granular than equip slot fallback icons")
+        expect(equipmentTypeIcons.allSatisfy { $0.hasPrefix("item_") }, "equipment types use clean item type icons instead of generic slot icons")
+        expect(Set(equipmentTypeIcons).count == EquipmentType.allCases.count && Set(equipmentTypeIcons).count > Set(slotIcons).count, "each equipment type has its own clean icon")
 
         let a = Item(id: "same", name: "甲", rarity: .common, slot: .weapon, stats: ItemStats(bonusATK: 1), description: "x")
         let b = Item(id: "same", name: "乙", rarity: .rare, slot: .armor, stats: ItemStats(bonusDEF: 9), description: "y")

@@ -167,45 +167,45 @@ enum GameArt {
     static func itemIconName(for equipmentType: EquipmentType) -> String {
         switch equipmentType {
         case .sword:
-            return "item_2_0"
+            return "item_0_0"
         case .bow:
-            return "item_2_1"
+            return "item_0_1"
         case .staff:
-            return "item_3_4"
+            return "item_0_2"
         case .scepter:
-            return "item_2_2"
+            return "item_0_3"
         case .crossbow:
-            return "item_3_1"
+            return "item_0_4"
         case .axe:
-            return "item_2_2"
+            return "item_1_0"
         case .shield:
-            return "item_1_4"
+            return "item_1_1"
         case .arrow:
-            return "item_3_1"
+            return "item_1_2"
         case .orb:
-            return "item_3_2"
+            return "item_1_3"
         case .tome:
-            return "item_2_4"
+            return "item_1_4"
         case .bolt:
-            return "item_3_1"
+            return "item_2_0"
         case .hatchet:
-            return "item_3_4"
+            return "item_2_1"
         case .helmet:
-            return "item_3_3"
+            return "item_2_2"
         case .armor:
             return "item_2_3"
         case .gloves:
-            return "item_1_0"
+            return "item_2_4"
         case .boots:
-            return "item_1_1"
+            return "item_3_0"
         case .amulet:
-            return "item_0_4"
+            return "item_3_1"
         case .earring:
-            return "item_0_0"
+            return "item_3_2"
         case .ring:
-            return "item_0_3"
+            return "item_3_3"
         case .bracer:
-            return "item_0_1"
+            return "item_3_4"
         }
     }
 

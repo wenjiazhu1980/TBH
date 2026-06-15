@@ -86,37 +86,37 @@
 ### 物品图标 (20个)
 | 文件名 | 格式 | 说明 |
 |--------|------|------|
-| item_0_0.png ~ item_3_4.png | 32x32 RGBA | 从 `ss_02.jpg` 下方背包面板 3行7列格内裁切前20个清洁图标，补透明边距后用于武器、护甲、饰品等类型级映射 |
+| item_0_0.png ~ item_3_4.png | 32x32 RGBA | 基于原版 20 种装备类型语义生成的透明像素图标；`ss_02.jpg` 的背包格只作为视觉参考，不直接裁切进运行时资源，避免格线、相邻物品和面板碎片污染图标 |
 
 运行时装备类型图标映射：
 | 装备类型 | 图标 |
 |--------|------|
-| Sword | item_2_0 |
-| Bow | item_2_1 |
-| Staff | item_3_4 |
-| Scepter | item_2_2 |
-| Crossbow | item_3_1 |
-| Axe | item_2_2 |
-| Shield | item_1_4 |
-| Arrow | item_3_1 |
-| Orb | item_3_2 |
-| Tome | item_2_4 |
-| Bolt | item_3_1 |
-| Hatchet | item_3_4 |
-| Helmet | item_3_3 |
+| Sword | item_0_0 |
+| Bow | item_0_1 |
+| Staff | item_0_2 |
+| Scepter | item_0_3 |
+| Crossbow | item_0_4 |
+| Axe | item_1_0 |
+| Shield | item_1_1 |
+| Arrow | item_1_2 |
+| Orb | item_1_3 |
+| Tome | item_1_4 |
+| Bolt | item_2_0 |
+| Hatchet | item_2_1 |
+| Helmet | item_2_2 |
 | Armor | item_2_3 |
-| Gloves | item_1_0 |
-| Boots | item_1_1 |
-| Amulet | item_0_4 |
-| Earring | item_0_0 |
-| Ring | item_0_3 |
-| Bracer | item_0_1 |
+| Gloves | item_2_4 |
+| Boots | item_3_0 |
+| Amulet | item_3_1 |
+| Earring | item_3_2 |
+| Ring | item_3_3 |
+| Bracer | item_3_4 |
 
 装备图标资源的打包契约：
 - `GameArt.itemIconName(for item:)` 必须优先使用 `Item.equipmentType`，未知非装备才回退到 `official_item_*` 通用图标
-- 20 个 `EquipmentType` 必须映射到提取自原版物品格的 `item_*` 资源
-- 类型级图标至少保持 15 个不同图像，避免重新退化成少数槽位级通用图标
-- `ResourceSelfTest` 会验证这些运行时装备图标能从打包资源加载，并保持 32x32 RGBA、透明边距的清洁裁切尺寸，避免把装备栏边框、相邻格或截图 UI 块打包进图标
+- 20 个 `EquipmentType` 必须一一映射到独立的 `item_*` 资源，避免退化成少数槽位级通用图标
+- `ResourceSelfTest` 会验证这些运行时装备图标能从打包资源加载，并保持 32x32 RGBA、透明背景、透明角和合理可见像素占比，避免把装备栏边框、相邻格或截图 UI 块打包进图标
+- `scripts/audit-local-item-icons.sh` 会从 Swift 源码解析 `EquipmentType` 与 `GameArt.itemIconName(for:)` 映射，并独立检查 20 张 `item_*` 图标的一一对应、尺寸、透明角、可见像素占比和重复像素载荷
 - 这仍是类型级占位映射，不等同于原版 5,760 件物品的完整逐件图标库
 
 ### 来源页材料与关卡宝箱图标

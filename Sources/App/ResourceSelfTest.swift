@@ -919,11 +919,12 @@ enum ResourceSelfTest {
         let slotIconNames = Set(EquipSlot.allCases.map { GameArt.itemIconName(for: $0) })
         let distinctTypeIconNames = Set(equipmentTypeIcons.map(\.1))
 
-        if distinctTypeIconNames.count < 15 || distinctTypeIconNames.count <= slotIconNames.count {
+        if distinctTypeIconNames.count != EquipmentType.allCases.count ||
+            distinctTypeIconNames.count <= slotIconNames.count {
             issues.append(
                 SpriteIssue(
                     name: "EquipmentType",
-                    message: "equipment type icons must stay more granular than slot fallback icons"
+                    message: "each equipment type must keep its own clean icon instead of falling back to shared slot art"
                 )
             )
         }
@@ -933,7 +934,7 @@ enum ResourceSelfTest {
                 issues.append(
                     SpriteIssue(
                         name: equipmentType.rawValue,
-                        message: "equipment type icon must use extracted item-grid art, got \(iconName)"
+                        message: "equipment type icon must use clean item type art, got \(iconName)"
                     )
                 )
                 continue
@@ -1019,14 +1020,14 @@ enum ResourceSelfTest {
         guard bitmap.pixelsWide == 32, bitmap.pixelsHigh == 32 else {
             return SpriteIssue(
                 name: equipmentType.rawValue,
-                message: "item sprite \(spriteName) must be the cleaned 32x32 inventory-grid art, got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
+                message: "item sprite \(spriteName) must be clean 32x32 type art, got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
             )
         }
 
         guard bitmap.hasAlpha else {
             return SpriteIssue(
                 name: equipmentType.rawValue,
-                message: "item sprite \(spriteName) must keep transparent padding around the cleaned inventory crop"
+                message: "item sprite \(spriteName) must keep a transparent background"
             )
         }
 
@@ -1040,7 +1041,24 @@ enum ResourceSelfTest {
         guard cornerAlphaValues.allSatisfy({ $0 == 0.0 }) else {
             return SpriteIssue(
                 name: equipmentType.rawValue,
-                message: "item sprite \(spriteName) appears to include inventory frame edges instead of transparent padding"
+                message: "item sprite \(spriteName) appears to include inventory frame edges instead of transparent art"
+            )
+        }
+
+        var opaquePixelCount = 0
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                if alphaComponent(in: bitmap, x: x, y: y) > 0.10 {
+                    opaquePixelCount += 1
+                }
+            }
+        }
+
+        let opaquePixelRatio = Double(opaquePixelCount) / Double(bitmap.pixelsWide * bitmap.pixelsHigh)
+        guard (0.08...0.70).contains(opaquePixelRatio) else {
+            return SpriteIssue(
+                name: equipmentType.rawValue,
+                message: "item sprite \(spriteName) has suspicious visible-pixel coverage \(String(format: "%.1f", opaquePixelRatio * 100))%; likely a cropped UI tile instead of clean equipment art"
             )
         }
 
