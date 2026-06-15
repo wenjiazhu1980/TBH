@@ -146,6 +146,8 @@ import Testing
         #expect(SourceRuneCatalog.byID["11001"]?.enName == "Rune of Repose")
         #expect(SourceRuneCatalog.byID["11001"]?.nextIDs == ["110011", "110012"])
         #expect(SourceRuneCatalog.byID["110012"]?.iconName == "OfflineRewardExpPercent")
+        #expect(SourceRuneCatalog.byID["1021"]?.iconName == "OpenOneTypeChestAllAtOnce")
+        #expect(SourceRuneCatalog.byID["1055"]?.iconName == "OpenAllTypeChestAllAtOnce")
         #expect(RuneTreeNode.allCases.allSatisfy { SourceRuneCatalog.byID[$0.sourceRuneID] != nil })
     }
 
@@ -158,6 +160,8 @@ import Testing
         #expect(GameArt.runeTreeIconName(for: .partySlot3) == "rune_party_slot")
         #expect(GameArt.runeTreeIconName(for: .activeSkillSlot2) == "rune_active_skill_slot")
         #expect(GameArt.runeTreeIconName(for: .inventoryExpansion1) == "rune_inventory_capacity")
+        #expect(GameArt.runeTreeIconName(for: .openOneChestType) == "rune_open_one_chest_type")
+        #expect(GameArt.runeTreeIconName(for: .openAllChestTypes) == "rune_open_all_chest_types")
         #expect(GameArt.runeTreeIconName(for: .offlineRewards) == "rune_offline_rewards")
         #expect(GameArt.runeTreeIconName(for: .offlineGoldBoost) == "rune_offline_gold")
         #expect(GameArt.runeTreeIconName(for: .offlineXPBoost) == "rune_offline_xp")

@@ -371,6 +371,10 @@ enum GameArt {
             return "rune_active_skill_slot"
         case .inventoryExpansion1:
             return "rune_inventory_capacity"
+        case .openOneChestType:
+            return "rune_open_one_chest_type"
+        case .openAllChestTypes:
+            return "rune_open_all_chest_types"
         case .offlineRewards:
             return "rune_offline_rewards"
         case .offlineGoldBoost:
@@ -385,6 +389,8 @@ enum GameArt {
             "rune_party_slot",
             "rune_active_skill_slot",
             "rune_inventory_capacity",
+            "rune_open_one_chest_type",
+            "rune_open_all_chest_types",
             "rune_offline_rewards",
             "rune_offline_gold",
             "rune_offline_xp"

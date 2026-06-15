@@ -116,7 +116,7 @@
 - `GameArt.itemIconName(for item:)` 必须优先使用 `Item.equipmentType`，未知非装备才回退到 `official_item_*` 通用图标
 - 20 个 `EquipmentType` 必须一一映射到独立的 `item_*` 资源，避免退化成少数槽位级通用图标
 - `ResourceSelfTest` 会验证这些运行时装备图标能从打包资源加载，并保持 32x32 RGBA、透明背景、透明角和合理可见像素占比，避免把装备栏边框、相邻格或截图 UI 块打包进图标
-- `scripts/audit-local-item-icons.sh` 会从 Swift 源码解析 `EquipmentType` 与 `GameArt.itemIconName(for:)` 映射，并独立检查 20 张 `item_*` 图标的一一对应、尺寸、透明角、可见像素占比和重复像素载荷
+- `scripts/audit-local-item-icons.sh` 会从 Swift 源码解析 `EquipmentType` 与 `GameArt.itemIconName(for:)` 映射，并独立检查 20 张 `item_*` 图标的一一对应、尺寸、透明角、可见像素占比、可见像素连通性和重复像素载荷，避免整块背包 UI 裁片或相邻装备碎片混入运行时图标
 - 这仍是类型级占位映射，不等同于原版 5,760 件物品的完整逐件图标库
 
 ### 来源页材料与关卡宝箱图标
@@ -166,16 +166,18 @@
 | rune_party_slot.png | 指挥符文：第 2/3 编队位 | 40x40 | 从 `ss_06.jpg` Rune Tree 节点裁切 |
 | rune_active_skill_slot.png | 觉醒符文：第 2 主动技能槽 | 40x40 | 从 `ss_06.jpg` Rune Tree 节点裁切 |
 | rune_inventory_capacity.png | 扩张符文：背包容量 +10 | 40x40 | 从 `ss_06.jpg` Rune Tree 的 `MaxInventorySlot` 节点裁切 |
+| rune_open_one_chest_type.png | 开启符文：同类箱子全部开启 | 16x16 | 从 `taskbarhero.org/assets/tbhdb/game/runes/OpenOneTypeChestAllAtOnce.png` 直接下载 |
+| rune_open_all_chest_types.png | 开启符文：全部箱子一键开启 | 16x16 | 从 `taskbarhero.org/assets/tbhdb/game/runes/OpenAllTypeChestAllAtOnce.png` 直接下载 |
 | rune_offline_rewards.png | 安息符文：离线奖励 | 40x40 | 从 `ss_06.jpg` Rune Tree 节点裁切 |
 | rune_offline_gold.png | 储藏符文：离线金币 +10% | 40x40 | 从 `ss_06.jpg` Rune Tree 节点裁切 |
 | rune_offline_xp.png | 训练符文：离线经验 +10% | 40x40 | 从 `ss_06.jpg` Rune Tree 节点裁切 |
 
-当前代码只建模了 7 个符文节点，因此 `rune_*` 只覆盖这个子集。`扩张符文：背包容量 +10` 已接入运行时背包容量，并使用 `MaxInventorySlot` 图标族的独立裁切；`SourceRuneCatalog` 以数据形式保留了完整原版 Rune Tree 的 197 个节点、195 条 `Next` 连线、11 条稀疏 `Previous` 引用及其精确映射、39 个图标族、图标族分布、`MaxLevel` 分布 `1:62, 2:1, 3:43, 5:89, 10:2`，以及 `Next` 出度分布 `0:79, 1:63, 2:35, 3:18, 4:2`。精确逐节点坐标、成本、效果和扩容数值仍需要更完整的授权资源或逐节点截图。
+当前代码只建模了 9 个符文节点，因此 `rune_*` 只覆盖这个子集。`扩张符文：背包容量 +10` 已接入运行时背包容量，并使用 `MaxInventorySlot` 图标族的独立裁切；两个 `开启符文` 已接入同类箱子批量开启和全部箱子一键开启，但成本和完整原版路径仍按未核对处理；`SourceRuneCatalog` 以数据形式保留了完整原版 Rune Tree 的 197 个节点、195 条 `Next` 连线、11 条稀疏 `Previous` 引用及其精确映射、39 个图标族、图标族分布、`MaxLevel` 分布 `1:62, 2:1, 3:43, 5:89, 10:2`，以及 `Next` 出度分布 `0:79, 1:63, 2:35, 3:18, 4:2`。精确逐节点坐标、成本、效果和扩容数值仍需要更完整的授权资源或逐节点截图。
 
 符文树图标资源的打包契约：
 - `GameArt.runeTreeIconName(for:)` 必须让所有当前 `RuneTreeNode` 都解析到 `rune_*` 资源
-- 当前 7 个节点必须保留 6 个不同图标，其中第 2/3 编队位共用 `rune_party_slot`
-- 每个 `GameArt.runeTreeIconNames` 中的图标都必须能从打包资源加载，并保持 `40x40`
+- 当前 9 个节点必须保留 8 个不同图标，其中第 2/3 编队位共用 `rune_party_slot`
+- 每个 `GameArt.runeTreeIconNames` 中的图标都必须能从打包资源加载，并保持当前来源尺寸（截图裁切节点为 `40x40`，源站公开开启符文为 `16x16`）
 - `ResourceSelfTest` 会检查这些图标的色彩复杂度，避免背景纹理块混入设置页符文树 UI
 
 ### 任务栏精灵

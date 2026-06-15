@@ -129,7 +129,7 @@ CURRENT_BASELINE = {
     "source_rune_nodes": 197,
     "source_rune_connections": 195,
     "source_rune_previous_refs": 11,
-    "interactive_rune_nodes": 7,
+    "interactive_rune_nodes": 9,
     "acts": 3,
     "display_stages": 30,
     "runtime_stage_rows": 120,

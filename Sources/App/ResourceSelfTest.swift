@@ -1064,7 +1064,75 @@ enum ResourceSelfTest {
             )
         }
 
+        let connectivity = alphaConnectivitySummary(in: bitmap, alphaThreshold: 0.10)
+        let largestShare = connectivity.totalPixels > 0
+            ? Double(connectivity.largestComponentPixelCount) / Double(connectivity.totalPixels)
+            : 0
+        guard connectivity.componentCount == 1 || largestShare >= 0.92 else {
+            return SpriteIssue(
+                name: equipmentType.rawValue,
+                message: "item sprite \(spriteName) has \(connectivity.componentCount) visible fragments; likely a cropped inventory tile with adjacent item art"
+            )
+        }
+
         return nil
+    }
+
+    private static func alphaConnectivitySummary(
+        in bitmap: NSBitmapImageRep,
+        alphaThreshold: CGFloat
+    ) -> (componentCount: Int, largestComponentPixelCount: Int, totalPixels: Int) {
+        let width = bitmap.pixelsWide
+        let height = bitmap.pixelsHigh
+        var visited = Array(repeating: false, count: width * height)
+        var componentCount = 0
+        var largestComponentPixelCount = 0
+        var totalPixels = 0
+
+        func index(_ x: Int, _ y: Int) -> Int {
+            y * width + x
+        }
+
+        func isVisible(_ x: Int, _ y: Int) -> Bool {
+            alphaComponent(in: bitmap, x: x, y: y, defaultValue: 0.0) > alphaThreshold
+        }
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let startIndex = index(x, y)
+                guard !visited[startIndex], isVisible(x, y) else {
+                    continue
+                }
+
+                componentCount += 1
+                var componentPixelCount = 0
+                var queue = [(x, y)]
+                var cursor = 0
+                visited[startIndex] = true
+
+                while cursor < queue.count {
+                    let (currentX, currentY) = queue[cursor]
+                    cursor += 1
+                    componentPixelCount += 1
+
+                    for nextY in max(0, currentY - 1)...min(height - 1, currentY + 1) {
+                        for nextX in max(0, currentX - 1)...min(width - 1, currentX + 1) {
+                            let nextIndex = index(nextX, nextY)
+                            guard !visited[nextIndex], isVisible(nextX, nextY) else {
+                                continue
+                            }
+                            visited[nextIndex] = true
+                            queue.append((nextX, nextY))
+                        }
+                    }
+                }
+
+                totalPixels += componentPixelCount
+                largestComponentPixelCount = max(largestComponentPixelCount, componentPixelCount)
+            }
+        }
+
+        return (componentCount, largestComponentPixelCount, totalPixels)
     }
 
     private static func validateSourceItemSprite(
@@ -1264,10 +1332,11 @@ enum ResourceSelfTest {
             )
         }
 
-        guard bitmap.pixelsWide == 40, bitmap.pixelsHigh == 40 else {
+        let expectedSize = sourceNodeIconSize(named: spriteName)
+        guard bitmap.pixelsWide == expectedSize.width, bitmap.pixelsHigh == expectedSize.height else {
             return SpriteIssue(
                 name: issueName,
-                message: "source node icon \(spriteName) must be extracted 40x40 Rune Tree node art, got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
+                message: "source node icon \(spriteName) must be \(expectedSize.width)x\(expectedSize.height) node art, got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
             )
         }
 
@@ -1293,7 +1362,9 @@ enum ResourceSelfTest {
             }
         }
 
-        guard distinctColors.count >= 24, saturatedPixels >= 64 else {
+        let minimumDistinctColors = expectedSize.width == 16 ? 8 : 24
+        let minimumSaturatedPixels = expectedSize.width == 16 ? 8 : 64
+        guard distinctColors.count >= minimumDistinctColors, saturatedPixels >= minimumSaturatedPixels else {
             return SpriteIssue(
                 name: issueName,
                 message: "source node icon \(spriteName) looks like a background crop instead of a detailed source node"
@@ -1301,6 +1372,15 @@ enum ResourceSelfTest {
         }
 
         return nil
+    }
+
+    private static func sourceNodeIconSize(named spriteName: String) -> (width: Int, height: Int) {
+        switch spriteName {
+        case "rune_open_one_chest_type", "rune_open_all_chest_types":
+            return (16, 16)
+        default:
+            return (40, 40)
+        }
     }
 
     private static func validateSFXResourceNames() -> [SFXIssue] {

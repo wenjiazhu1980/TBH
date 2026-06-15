@@ -113,6 +113,39 @@ for icon_name in extra_resources:
 def alpha_at(image, x, y):
     return image.getpixel((x, y))[3]
 
+def connected_alpha_components(image, alpha_threshold=25):
+    width, height = image.size
+    pixels = image.load()
+    visited = set()
+    components = []
+
+    for y in range(height):
+        for x in range(width):
+            if (x, y) in visited or pixels[x, y][3] <= alpha_threshold:
+                continue
+
+            stack = [(x, y)]
+            visited.add((x, y))
+            component_size = 0
+
+            while stack:
+                current_x, current_y = stack.pop()
+                component_size += 1
+
+                for next_y in range(max(0, current_y - 1), min(height, current_y + 2)):
+                    for next_x in range(max(0, current_x - 1), min(width, current_x + 2)):
+                        if (next_x, next_y) in visited:
+                            continue
+                        if pixels[next_x, next_y][3] <= alpha_threshold:
+                            continue
+                        visited.add((next_x, next_y))
+                        stack.append((next_x, next_y))
+
+            components.append(component_size)
+
+    components.sort(reverse=True)
+    return components
+
 rows = []
 payload_hashes = {}
 
@@ -152,6 +185,13 @@ for equipment_type in equipment_types:
             f"{icon_name}.png has suspicious visible coverage {opaque_ratio:.3f}; likely blank or a cropped UI tile"
         )
 
+    components = connected_alpha_components(image)
+    largest_component_share = (components[0] / opaque_pixels) if opaque_pixels else 0.0
+    if len(components) != 1 and largest_component_share < 0.92:
+        issues.append(
+            f"{icon_name}.png has {len(components)} visible fragments with largest share {largest_component_share:.3f}; likely a cropped inventory tile"
+        )
+
     bbox = image.getbbox()
     if bbox is None:
         issues.append(f"{icon_name}.png is fully transparent")
@@ -170,6 +210,8 @@ for equipment_type in equipment_types:
             opaque_pixels,
             opaque_ratio,
             bbox_text,
+            len(components),
+            largest_component_share,
             corners,
         )
     )
@@ -182,11 +224,11 @@ print(f"sprite_dir={sprite_dir}")
 print(f"item_source={item_path}")
 print(f"game_art_source={game_art_path}")
 print()
-print("equipment_type  icon      size   opaque  ratio   alpha_bbox     corners")
-print("--------------  --------  -----  ------  ------  -------------  -----------")
-for equipment_type, icon_name, size, opaque_pixels, opaque_ratio, bbox_text, corners in rows:
+print("equipment_type  icon      size   opaque  ratio   alpha_bbox     comps  largest  corners")
+print("--------------  --------  -----  ------  ------  -------------  -----  -------  -----------")
+for equipment_type, icon_name, size, opaque_pixels, opaque_ratio, bbox_text, component_count, largest_share, corners in rows:
     print(
-        f"{equipment_type:<14}  {icon_name:<8}  {size:<5}  {opaque_pixels:>6}  {opaque_ratio:>6.3f}  {bbox_text:<13}  {corners}"
+        f"{equipment_type:<14}  {icon_name:<8}  {size:<5}  {opaque_pixels:>6}  {opaque_ratio:>6.3f}  {bbox_text:<13}  {component_count:>5}  {largest_share:>7.3f}  {corners}"
     )
 
 if rows:

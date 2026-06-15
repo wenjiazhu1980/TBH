@@ -277,10 +277,12 @@ enum SelfTest {
         expect(
             GameArt.runeTreeIconName(for: .activeSkillSlot2) == "rune_active_skill_slot" &&
                 GameArt.runeTreeIconName(for: .inventoryExpansion1) == "rune_inventory_capacity" &&
+                GameArt.runeTreeIconName(for: .openOneChestType) == "rune_open_one_chest_type" &&
+                GameArt.runeTreeIconName(for: .openAllChestTypes) == "rune_open_all_chest_types" &&
                 GameArt.runeTreeIconName(for: .offlineRewards) == "rune_offline_rewards" &&
                 GameArt.runeTreeIconName(for: .offlineGoldBoost) == "rune_offline_gold" &&
                 GameArt.runeTreeIconName(for: .offlineXPBoost) == "rune_offline_xp",
-            "modeled active-skill, inventory and offline Rune Tree nodes keep category-specific icons"
+            "modeled active-skill, inventory, chest-opening and offline Rune Tree nodes keep category-specific icons"
         )
     }
 
@@ -2915,6 +2917,11 @@ enum SelfTest {
             "offline runtime runes resolve to checked source rows and icon families"
         )
         expect(
+            SourceRuneCatalog.byID[RuneTreeNode.openOneChestType.sourceRuneID]?.iconName == "OpenOneTypeChestAllAtOnce" &&
+                SourceRuneCatalog.byID[RuneTreeNode.openAllChestTypes.sourceRuneID]?.iconName == "OpenAllTypeChestAllAtOnce",
+            "chest-opening runtime runes resolve to checked source rows and icon families"
+        )
+        expect(
             RuneTreeNode.partySlot2.goldCost == 50_000 &&
                 RuneTreeNode.partySlot3.goldCost == 150_000,
             "Rune of Command party slots use checked gold costs"
@@ -2944,6 +2951,17 @@ enum SelfTest {
         )
         expect(!tree.canUnlock(.activeSkillSlot2, heroLevel: 2, availableGold: 0), "Rune of Awakening follows the level 3 Rune Tree gate")
         expect(tree.unlock(.activeSkillSlot2, heroLevel: 3, availableGold: 0) && tree.activeSkillSlotCount == 2, "Rune of Awakening unlocks the second active skill slot")
+        expect(!tree.canUnlock(.openAllChestTypes, heroLevel: 3, availableGold: 0), "open-all chest rune requires the modeled open-one prerequisite")
+        expect(
+            tree.unlock(.openOneChestType, heroLevel: 3, availableGold: 0) &&
+                tree.canOpenOneChestTypeAtOnce,
+            "Rune of Opening unlocks one-type batch chest opening without inventing a gold cost"
+        )
+        expect(
+            tree.unlock(.openAllChestTypes, heroLevel: 3, availableGold: 0) &&
+                tree.canOpenAllChestTypesAtOnce,
+            "Rune of Opening unlocks all-type batch chest opening after the modeled prerequisite"
+        )
         expect(!RuneTreeNode.inventoryExpansion1.hasVerifiedGoldCost && RuneTreeNode.inventoryExpansion1.costText == "成本待核对", "Rune of Expansion inventory cost remains explicitly unverified")
         var inventoryTree = RuneTree()
         expect(!inventoryTree.canUnlock(.inventoryExpansion1, heroLevel: 3, availableGold: 0), "Rune of Expansion inventory capacity requires the modeled party-slot prerequisite")
@@ -3793,17 +3811,32 @@ enum SelfTest {
             audio: SilentAudio()
         )
         batchChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal))
+        batchChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 5, sourceStageCode: "1-2", sourceDifficulty: .normal))
         batchChestEngine.progress.chests.add(LootChest(kind: .nightmare, itemLevel: 20, sourceStageCode: "2-1", sourceDifficulty: .nightmare))
         batchChestEngine.progress.chests.add(LootChest(kind: .hell, itemLevel: 40, sourceStageCode: "3-1", sourceDifficulty: .hell))
         expect(
-            batchChestEngine.openAllChests() == 3 &&
+            batchChestEngine.openAllChests() == 0 &&
+                batchChestEngine.openChests(kind: .normal) == 0 &&
+                batchChestEngine.progress.chests.totalCount == 4,
+            "batch chest opening stays locked before the checked Rune of Opening effects"
+        )
+        batchChestEngine.hero.gainXP(1_000)
+        expect(batchChestEngine.unlockRuneTreeNode(.openOneChestType), "Rune of Opening unlocks one-type batch chest opening in the engine")
+        expect(
+            batchChestEngine.openChests(kind: .normal) == 2 &&
+                batchChestEngine.progress.chests.totalCount == 2 &&
+                batchChestEngine.progress.soulStones.count(for: .normal) == 2,
+            "one-type chest opening consumes only the selected chest kind snapshot"
+        )
+        expect(batchChestEngine.unlockRuneTreeNode(.openAllChestTypes), "second Rune of Opening unlocks all-type batch chest opening in the engine")
+        expect(
+            batchChestEngine.openAllChests() == 2 &&
                 batchChestEngine.progress.chests.totalCount == 0 &&
-                batchChestEngine.progress.soulStones.count(for: .normal) == 1 &&
                 batchChestEngine.progress.soulStones.count(for: .nightmare) == 1 &&
                 batchChestEngine.progress.soulStones.count(for: .hell) == 1 &&
-                batchChestEngine.inventory.items.count == 3 &&
-                batchChestEngine.statistics.itemsFound == 3,
-            "one-click chest opening consumes the current chest snapshot and keeps all rewards"
+                batchChestEngine.inventory.items.count == 4 &&
+                batchChestEngine.statistics.itemsFound == 4,
+            "all-type chest opening consumes the remaining chest snapshot and keeps all rewards"
         )
 
         engine.setPartyMember(slotIndex: 1, heroClass: .sorcerer)

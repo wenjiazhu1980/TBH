@@ -518,18 +518,29 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
     @Test func openAllChestsConsumesSnapshotAndKeepsRewards() {
         let engine = makeEngine()
         engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal))
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 5, sourceStageCode: "1-2", sourceDifficulty: .normal))
         engine.progress.chests.add(LootChest(kind: .nightmare, itemLevel: 20, sourceStageCode: "2-1", sourceDifficulty: .nightmare))
         engine.progress.chests.add(LootChest(kind: .hell, itemLevel: 40, sourceStageCode: "3-1", sourceDifficulty: .hell))
 
+        #expect(engine.openAllChests() == 0)
+        #expect(engine.openChests(kind: .normal) == 0)
+        #expect(engine.progress.chests.totalCount == 4)
+
+        engine.hero.gainXP(1_000)
+        #expect(engine.unlockRuneTreeNode(.openOneChestType))
+        #expect(engine.openChests(kind: .normal) == 2)
+        #expect(engine.progress.chests.totalCount == 2)
+        #expect(engine.progress.soulStones.count(for: .normal) == 2)
+
+        #expect(engine.unlockRuneTreeNode(.openAllChestTypes))
         let openedCount = engine.openAllChests()
 
-        #expect(openedCount == 3)
+        #expect(openedCount == 2)
         #expect(engine.progress.chests.totalCount == 0)
-        #expect(engine.progress.soulStones.count(for: .normal) == 1)
         #expect(engine.progress.soulStones.count(for: .nightmare) == 1)
         #expect(engine.progress.soulStones.count(for: .hell) == 1)
-        #expect(engine.inventory.items.count == 3)
-        #expect(engine.statistics.itemsFound == 3)
+        #expect(engine.inventory.items.count == 4)
+        #expect(engine.statistics.itemsFound == 4)
     }
 }
 

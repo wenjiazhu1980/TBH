@@ -5,6 +5,8 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
     case partySlot3
     case activeSkillSlot2
     case inventoryExpansion1
+    case openOneChestType
+    case openAllChestTypes
     case offlineRewards
     case offlineGoldBoost
     case offlineXPBoost
@@ -17,6 +19,8 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         case .partySlot3: return "24"
         case .activeSkillSlot2: return "27"
         case .inventoryExpansion1: return "22"
+        case .openOneChestType: return "1021"
+        case .openAllChestTypes: return "1055"
         case .offlineRewards: return "11001"
         case .offlineGoldBoost: return "110011"
         case .offlineXPBoost: return "110012"
@@ -29,6 +33,8 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         case .partySlot3: return "指挥符文：第 3 编队位"
         case .activeSkillSlot2: return "觉醒符文：第 2 主动技能槽"
         case .inventoryExpansion1: return "扩张符文：背包容量 +10"
+        case .openOneChestType: return "开启符文：同类箱子全部开启"
+        case .openAllChestTypes: return "开启符文：全部箱子一键开启"
         case .offlineRewards: return "安息符文：离线奖励"
         case .offlineGoldBoost: return "储藏符文：离线金币 +10%"
         case .offlineXPBoost: return "训练符文：离线经验 +10%"
@@ -39,7 +45,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .partySlot2: return 50_000
         case .partySlot3: return 150_000
-        case .activeSkillSlot2, .inventoryExpansion1, .offlineRewards, .offlineGoldBoost, .offlineXPBoost: return 0
+        case .activeSkillSlot2, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .offlineRewards, .offlineGoldBoost, .offlineXPBoost: return 0
         }
     }
 
@@ -47,7 +53,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .partySlot2, .partySlot3:
             return true
-        case .activeSkillSlot2, .inventoryExpansion1, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
+        case .activeSkillSlot2, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
             return false
         }
     }
@@ -56,7 +62,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .activeSkillSlot2:
             return 50_000
-        case .partySlot2, .partySlot3, .inventoryExpansion1, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
+        case .partySlot2, .partySlot3, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
             return nil
         }
     }
@@ -73,8 +79,9 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
 
     var requiredNode: RuneTreeNode? {
         switch self {
-        case .partySlot2, .activeSkillSlot2, .offlineRewards: return nil
+        case .partySlot2, .activeSkillSlot2, .openOneChestType, .offlineRewards: return nil
         case .partySlot3, .inventoryExpansion1: return .partySlot2
+        case .openAllChestTypes: return .openOneChestType
         case .offlineGoldBoost, .offlineXPBoost: return .offlineRewards
         }
     }
@@ -490,6 +497,14 @@ struct RuneTree: Codable, Equatable {
     var inventoryCapacity: Int {
         Inventory.baseCapacity
             + (isUnlocked(.inventoryExpansion1) ? Self.inventoryExpansionSlotBonus : 0)
+    }
+
+    var canOpenOneChestTypeAtOnce: Bool {
+        isUnlocked(.openOneChestType)
+    }
+
+    var canOpenAllChestTypesAtOnce: Bool {
+        isUnlocked(.openAllChestTypes)
     }
 
     var offlineRewardsUnlocked: Bool {

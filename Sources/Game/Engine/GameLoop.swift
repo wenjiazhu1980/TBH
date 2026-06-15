@@ -405,7 +405,23 @@ class GameEngine: ObservableObject {
     }
 
     @discardableResult
+    func openChests(kind: ChestKind) -> Int {
+        guard runeTree.canOpenOneChestTypeAtOnce else { return 0 }
+        let chestIDs = progress.chests.chests
+            .filter { $0.kind == kind }
+            .map(\.id)
+        var openedCount = 0
+
+        for chestID in chestIDs where openChest(id: chestID) {
+            openedCount += 1
+        }
+
+        return openedCount
+    }
+
+    @discardableResult
     func openAllChests() -> Int {
+        guard runeTree.canOpenAllChestTypesAtOnce else { return 0 }
         let chestIDs = progress.chests.chests.map(\.id)
         var openedCount = 0
 

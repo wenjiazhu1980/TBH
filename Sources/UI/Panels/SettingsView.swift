@@ -107,13 +107,29 @@ struct SettingsView: View {
                                     .foregroundColor(.secondary)
                             }
                         } else {
-                            Button {
-                                gameEngine.openAllChests()
-                            } label: {
-                                Label("全部开启 \(gameEngine.progress.chests.totalCount)", systemImage: "shippingbox.fill")
+                            if gameEngine.runeTree.canOpenAllChestTypesAtOnce {
+                                Button {
+                                    gameEngine.openAllChests()
+                                } label: {
+                                    Label("全部开启 \(gameEngine.progress.chests.totalCount)", systemImage: "shippingbox.fill")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            } else if gameEngine.runeTree.canOpenOneChestTypeAtOnce {
+                                ForEach(chestKindsWithSavedChests) { kind in
+                                    Button {
+                                        gameEngine.openChests(kind: kind)
+                                    } label: {
+                                        Label("开启\(kind.displayName) \(gameEngine.progress.chests.count(for: kind))", systemImage: "shippingbox.fill")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            } else {
+                                Label("解锁开启符文后可批量开箱", systemImage: "lock.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
 
                             ForEach(gameEngine.progress.chests.chests) { chest in
                                 HStack(spacing: 8) {
@@ -416,6 +432,10 @@ struct SettingsView: View {
 
     private var panelScalePercentText: String {
         "\(Int((MenuBarPopoverLayout.normalizedScale(panelScale) * 100).rounded()))%"
+    }
+
+    private var chestKindsWithSavedChests: [ChestKind] {
+        ChestKind.allCases.filter { gameEngine.progress.chests.count(for: $0) > 0 }
     }
 
     private func quitGame() {
