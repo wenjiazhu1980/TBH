@@ -138,7 +138,20 @@ enum BattleSceneSnapshot {
         hostingView.setFrameSize(size)
         hostingView.layoutSubtreeIfNeeded()
 
-        guard let bitmap = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else {
+        let outputScale: CGFloat = 2.0
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(size.width * outputScale),
+            pixelsHigh: Int(size.height * outputScale),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
             throw SnapshotError.cannotCreateBitmap
         }
         bitmap.size = size
