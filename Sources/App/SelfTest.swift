@@ -3710,6 +3710,30 @@ enum SelfTest {
         let legacyJSON = #"{"id":"old-ring","name":"旧饰品","rarity":"普通","slot":"饰品","stats":{"bonusHP":0,"bonusATK":1,"bonusDEF":0,"bonusSPD":0,"bonusCritRate":0,"bonusCritDamage":0},"description":"legacy"}"#
         let legacyItem = try? JSONDecoder().decode(Item.self, from: Data(legacyJSON.utf8))
         expect(legacyItem?.slot == .ring && legacyItem?.equipmentType == .ring && legacyItem?.isLocked == false, "legacy accessory item migrates to ring slot")
+        let legacyNameFixtures: [(id: String, name: String, slot: String, expectedType: EquipmentType, expectedSlot: EquipSlot)] = [
+            ("old-bow", "旧猎弓", "武器", .bow, .weapon),
+            ("old-crossbow", "旧弩", "武器", .crossbow, .weapon),
+            ("old-scepter", "旧权杖", "武器", .scepter, .weapon),
+            ("old-shield", "旧木盾", "副手", .shield, .offhand),
+            ("old-orb", "旧宝珠", "副手", .orb, .offhand),
+            ("old-amulet", "旧项链", "饰品", .amulet, .amulet),
+            ("old-earring", "旧耳环", "饰品", .earring, .earring),
+            ("old-bracer", "旧护腕", "饰品", .bracer, .bracer)
+        ]
+        let legacyNameMigrationPassed = legacyNameFixtures.allSatisfy { fixture in
+            let json = """
+            {"id":"\(fixture.id)","name":"\(fixture.name)","rarity":"普通","slot":"\(fixture.slot)","stats":{"bonusHP":0,"bonusATK":1,"bonusDEF":0,"bonusSPD":0,"bonusCritRate":0,"bonusCritDamage":0},"description":"legacy"}
+            """
+            guard let item = try? JSONDecoder().decode(Item.self, from: Data(json.utf8)) else {
+                return false
+            }
+            return item.equipmentType == fixture.expectedType &&
+                item.slot == fixture.expectedSlot &&
+                GameArt.itemIconName(for: item) == GameArt.itemIconName(for: fixture.expectedType)
+        }
+        expect(legacyNameMigrationPassed, "legacy item names infer concrete equipment types for cleaner item icons")
+        let explicitTypedItem = Item(id: "explicit", name: "旧弓", rarity: .common, slot: .weapon, stats: ItemStats(), description: "legacy", equipmentType: .sword)
+        expect(explicitTypedItem.equipmentType == .sword, "explicit equipment type wins over legacy item name inference")
 
         var loadout = EquipmentLoadout()
         let offhand = Item(id: "off1", name: "木盾", rarity: .common, slot: .offhand, stats: ItemStats(bonusDEF: 3), description: "", equipmentType: .shield)

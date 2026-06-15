@@ -193,6 +193,45 @@ import Foundation
         #expect(!item.isLocked)
     }
 
+    @Test func legacyItemDecodingInfersConcreteEquipmentTypesFromNames() throws {
+        let fixtures: [(String, String, String, EquipmentType, EquipSlot)] = [
+            ("old-bow", "旧猎弓", "武器", .bow, .weapon),
+            ("old-crossbow", "旧弩", "武器", .crossbow, .weapon),
+            ("old-scepter", "旧权杖", "武器", .scepter, .weapon),
+            ("old-shield", "旧木盾", "副手", .shield, .offhand),
+            ("old-orb", "旧宝珠", "副手", .orb, .offhand),
+            ("old-amulet", "旧项链", "饰品", .amulet, .amulet),
+            ("old-earring", "旧耳环", "饰品", .earring, .earring),
+            ("old-bracer", "旧护腕", "饰品", .bracer, .bracer)
+        ]
+
+        for (id, name, slot, expectedType, expectedSlot) in fixtures {
+            let json = """
+            {"id":"\(id)","name":"\(name)","rarity":"普通","slot":"\(slot)","stats":{"bonusHP":0,"bonusATK":1,"bonusDEF":0,"bonusSPD":0,"bonusCritRate":0,"bonusCritDamage":0},"description":"legacy"}
+            """
+            let item = try JSONDecoder().decode(Item.self, from: Data(json.utf8))
+
+            #expect(item.equipmentType == expectedType)
+            #expect(item.slot == expectedSlot)
+            #expect(GameArt.itemIconName(for: item) == GameArt.itemIconName(for: expectedType))
+        }
+    }
+
+    @Test func explicitEquipmentTypeWinsOverLegacyNameInference() {
+        let item = Item(
+            id: "explicit",
+            name: "旧弓",
+            rarity: .common,
+            slot: .weapon,
+            stats: ItemStats(),
+            description: "legacy",
+            equipmentType: .sword
+        )
+
+        #expect(item.equipmentType == .sword)
+        #expect(GameArt.itemIconName(for: item) == GameArt.itemIconName(for: EquipmentType.sword))
+    }
+
     @Test func equipItem() {
         var loadout = EquipmentLoadout()
         let sword = Item(id: "sword1", name: "铁剑", rarity: .common, slot: .weapon, stats: ItemStats(bonusATK: 10), description: "测试")

@@ -11,6 +11,7 @@ item_swift="${ITEM_SWIFT:-Sources/Game/Inventory/Item.swift}"
 loot_table_swift="${LOOT_TABLE_SWIFT:-Sources/Game/Inventory/LootTable.swift}"
 battle_swift="${BATTLE_SWIFT:-Sources/Game/Combat/Battle.swift}"
 battle_view_swift="${BATTLE_VIEW_SWIFT:-Sources/UI/Panels/BattleView.swift}"
+self_test_swift="${SELF_TEST_SWIFT:-Sources/App/SelfTest.swift}"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -21,7 +22,7 @@ require_tool() {
 
 require_tool python3
 
-python3 - "$hero_swift" "$skills_swift" "$rune_swift" "$stage_swift" "$difficulty_swift" "$chapter_swift" "$item_swift" "$loot_table_swift" "$battle_swift" "$battle_view_swift" <<'PY'
+python3 - "$hero_swift" "$skills_swift" "$rune_swift" "$stage_swift" "$difficulty_swift" "$chapter_swift" "$item_swift" "$loot_table_swift" "$battle_swift" "$battle_view_swift" "$self_test_swift" <<'PY'
 import re
 import sys
 from collections import Counter
@@ -37,8 +38,9 @@ item_path = Path(sys.argv[7])
 loot_table_path = Path(sys.argv[8])
 battle_path = Path(sys.argv[9])
 battle_view_path = Path(sys.argv[10])
+self_test_path = Path(sys.argv[11])
 
-for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_path, battle_view_path]:
+for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_path, battle_view_path, self_test_path]:
     if not path.is_file():
         print(f"required source file does not exist: {path}", file=sys.stderr)
         sys.exit(2)
@@ -53,6 +55,7 @@ item_source = item_path.read_text(encoding="utf-8")
 loot_table_source = loot_table_path.read_text(encoding="utf-8")
 battle_source = battle_path.read_text(encoding="utf-8")
 battle_view_source = battle_view_path.read_text(encoding="utf-8")
+self_test_source = self_test_path.read_text(encoding="utf-8")
 
 ORIGINAL = {
     "hero_classes": 6,
@@ -460,6 +463,13 @@ source_progression_runtime_selector = bool(re.search(
 ))
 loot_uses_source_progression_identity = "SourceItemCatalog.progression(for: type, itemLevel: itemLevel)" in loot_table_source and "来源装备" in loot_table_source
 synthesis_preview_uses_source_progression = "outputSourceProgression" in item_source and "SourceItemCatalog.progression(for: $0, itemLevel: level)" in item_source
+legacy_item_name_inference = (
+    "inferredLegacyType" in item_source
+    and "decodedDescription" in item_source
+    and "旧项链" in self_test_source
+    and "旧护腕" in self_test_source
+    and "GameArt.itemIconName(for: item) == GameArt.itemIconName(for: fixture.expectedType)" in self_test_source
+)
 support_sustained_skill_runtime = (
     "ActiveSupportSkillBuff" in battle_source
     and "activeSupportSkillBuffs" in battle_source
@@ -485,6 +495,8 @@ if not loot_uses_source_progression_identity:
     issues.append("LootTable.makeItem must use checked source base gear progression name/id")
 if not synthesis_preview_uses_source_progression:
     issues.append("SynthesisPreview must expose checked source base gear progression identity")
+if not legacy_item_name_inference:
+    issues.append("legacy item decoding must infer concrete equipment types from old item names for clean item icons")
 if not support_sustained_skill_runtime:
     issues.append("Battle must keep support-member sustained summon/range skill state for Hydra/Snowstorm/Turret")
 if not support_attack_count_skill_runtime:
@@ -752,6 +764,7 @@ print("source_rune_icon_distribution=" + ",".join(f"{icon}:{count}" for icon, co
 print("rune_dependency_edges=" + ",".join(f"{source}->{target}" for source, target in rune_dependency_edges) if rune_dependency_edges else "rune_dependency_edges=none")
 print("runtime_source_gear_progression_names=" + ("enabled" if source_progression_runtime_selector and loot_uses_source_progression_identity else "missing"))
 print("synthesis_preview_source_progression=" + ("enabled" if synthesis_preview_uses_source_progression else "missing"))
+print("legacy_item_name_inference=" + ("enabled" if legacy_item_name_inference else "missing"))
 print("support_sustained_skill_runtime=" + ("enabled" if support_sustained_skill_runtime else "missing"))
 print("support_attack_count_skill_runtime=" + ("enabled" if support_attack_count_skill_runtime else "missing"))
 print("source_gear_rarity_counts=" + ",".join(f"{key}:{source_gear_rarity_counts[key]}" for key in sorted(source_gear_rarity_counts)))

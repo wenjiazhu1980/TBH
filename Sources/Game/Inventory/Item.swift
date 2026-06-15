@@ -172,6 +172,54 @@ enum EquipmentType: String, Codable, CaseIterable, Hashable {
         case nil: return nil
         }
     }
+
+    static func inferredLegacyType(name: String, description: String, slot: EquipSlot?) -> EquipmentType? {
+        let searchableText = "\(name) \(description)".lowercased()
+
+        func containsAny(_ terms: [String]) -> Bool {
+            terms.contains { searchableText.contains($0.lowercased()) }
+        }
+
+        switch slot {
+        case .weapon:
+            if containsAny(["弓", "bow"]) { return .bow }
+            if containsAny(["弩", "crossbow"]) { return .crossbow }
+            if containsAny(["权杖", "圣杖", "scepter"]) { return .scepter }
+            if containsAny(["法杖", "魔杖", "staff"]) { return .staff }
+            if containsAny(["斧", "axe"]) { return .axe }
+            if containsAny(["剑", "刀", "匕首", "blade", "sword", "rapier"]) { return .sword }
+        case .offhand:
+            if containsAny(["盾", "shield"]) { return .shield }
+            if containsAny(["箭袋", "箭矢", "箭", "arrow"]) { return .arrow }
+            if containsAny(["宝珠", "orb"]) { return .orb }
+            if containsAny(["魔典", "书", "tome"]) { return .tome }
+            if containsAny(["弩矢", "弩箭", "bolt"]) { return .bolt }
+            if containsAny(["手斧", "hatchet"]) { return .hatchet }
+        case .helmet:
+            if containsAny(["头盔", "头冠", "王冠", "兜帽", "帽", "helmet", "crown", "hood"]) { return .helmet }
+        case .armor:
+            if containsAny(["护甲", "皮甲", "铠甲", "甲", "armor"]) { return .armor }
+        case .gloves:
+            if containsAny(["手套", "glove"]) { return .gloves }
+        case .boots:
+            if containsAny(["靴", "鞋", "boot"]) { return .boots }
+        case .amulet, .accessory:
+            if containsAny(["护符", "项链", "amulet", "necklace"]) { return .amulet }
+            if containsAny(["耳环", "earring", "earing"]) { return .earring }
+            if containsAny(["护腕", "手镯", "bracer", "bracelet"]) { return .bracer }
+            if containsAny(["戒指", "ring"]) { return .ring }
+        case .earring:
+            if containsAny(["耳环", "earring", "earing"]) { return .earring }
+        case .ring:
+            if containsAny(["戒指", "ring"]) { return .ring }
+        case .bracer:
+            if containsAny(["护腕", "手镯", "bracer", "bracelet"]) { return .bracer }
+        case nil:
+            return nil
+        }
+
+        return nil
+    }
 }
 
 struct SourceGearLevelProgression: Equatable, Identifiable {
@@ -690,7 +738,9 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
         self.id = id
         self.name = name
         self.rarity = rarity
-        let resolvedType = equipmentType ?? EquipmentType.defaultType(for: slot)
+        let resolvedType = equipmentType
+            ?? EquipmentType.inferredLegacyType(name: name, description: description, slot: slot)
+            ?? EquipmentType.defaultType(for: slot)
         self.slot = resolvedType?.equipSlot ?? (slot == .accessory ? .ring : slot)
         self.equipmentType = resolvedType
         self.itemLevel = max(1, itemLevel)
@@ -730,11 +780,13 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
         rarity = try c.decode(Rarity.self, forKey: .rarity)
         let decodedSlot = try c.decodeIfPresent(EquipSlot.self, forKey: .slot)
         let decodedType = try c.decodeIfPresent(EquipmentType.self, forKey: .equipmentType)
-        let resolvedType = decodedType ?? EquipmentType.defaultType(for: decodedSlot)
+        let decodedDescription = try c.decode(String.self, forKey: .description)
+        let resolvedType = decodedType
+            ?? EquipmentType.inferredLegacyType(name: name, description: decodedDescription, slot: decodedSlot)
+            ?? EquipmentType.defaultType(for: decodedSlot)
         equipmentType = resolvedType
         slot = resolvedType?.equipSlot ?? (decodedSlot == .accessory ? .ring : decodedSlot)
         stats = try c.decode(ItemStats.self, forKey: .stats)
-        let decodedDescription = try c.decode(String.self, forKey: .description)
         description = decodedDescription
         itemLevel = max(
             1,
