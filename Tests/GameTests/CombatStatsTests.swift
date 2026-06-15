@@ -127,6 +127,8 @@ import Testing
             delivery: "",
             range: 700
         ))
+        #expect(SourceSkillCatalog.skill(id: "309021")?.runtimeDamageElement == .chaos)
+        #expect(SourceSkillCatalog.skill(id: "309021")?.runtimeDelivery == SkillDelivery.none)
     }
 
     @Test func runtimeModeledSkillsAreSourceBacked() {
@@ -357,6 +359,15 @@ import Testing
         #expect(BattleImpactCue.visible(
             for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "电击弩箭电流")
         ) == .shockCurrentImpact)
+        #expect(BattleImpactCue.visible(
+            for: BattleLogEntry(
+                attacker: .hero,
+                damage: 100,
+                isCrit: false,
+                damageElement: .chaos,
+                delivery: .range
+            )
+        ) == .chaosBurst)
     }
 
     @Test func deliveryMetadataCanOverrideElementForSpecialCues() {

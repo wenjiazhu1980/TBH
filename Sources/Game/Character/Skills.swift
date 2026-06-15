@@ -13,12 +13,13 @@ enum SkillDamageElement: String, Codable, CaseIterable {
     case fire
     case cold
     case lightning
+    case chaos
 
     var isElemental: Bool {
         switch self {
         case .fire, .cold, .lightning:
             return true
-        case .none, .physical:
+        case .none, .physical, .chaos:
             return false
         }
     }
@@ -172,6 +173,8 @@ struct SourceSkill: Identifiable, Codable, Equatable {
             return .cold
         case "lightning":
             return .lightning
+        case "chaos":
+            return .chaos
         default:
             return .none
         }

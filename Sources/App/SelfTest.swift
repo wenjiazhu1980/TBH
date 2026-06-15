@@ -863,6 +863,18 @@ enum SelfTest {
                     attacker: .hero,
                     damage: 100,
                     isCrit: false,
+                    damageElement: .chaos,
+                    delivery: .range
+                )
+            ) == .chaosBurst,
+            "source chaos damage metadata exposes a chaos impact cue"
+        )
+        expect(
+            BattleImpactCue.visible(
+                for: BattleLogEntry(
+                    attacker: .hero,
+                    damage: 100,
+                    isCrit: false,
                     skillName: "充能陷阱",
                     damageElement: .physical,
                     delivery: .trap
@@ -2957,6 +2969,11 @@ enum SelfTest {
                 range: 700
             ),
             "source skill catalog keeps checked monster chaos skill rows"
+        )
+        expect(
+            SourceSkillCatalog.skill(id: "309021")?.runtimeDamageElement == .chaos &&
+                SourceSkillCatalog.skill(id: "309021")?.runtimeDelivery == SkillDelivery.none,
+            "source chaos skill rows map to runtime chaos metadata without fabricating delivery"
         )
         expect(
             SourceSkillCatalog.runtimeModeledSkillIDs.count == 36 &&

@@ -469,6 +469,7 @@ enum BattleImpactCue: String, CaseIterable {
     case lightningSpark
     case shockBoltImpact
     case shockCurrentImpact
+    case chaosBurst
     case trapBurst
     case summonProjectile
 
@@ -498,6 +499,8 @@ enum BattleImpactCue: String, CaseIterable {
             return .coldBurst
         case .lightning:
             return .lightningSpark
+        case .chaos:
+            return .chaosBurst
         case .physical:
             return .physicalSlash
         case .none:
@@ -559,6 +562,8 @@ enum BattleImpactCue: String, CaseIterable {
             return Color(red: 1.0, green: 0.88, blue: 0.18)
         case .shockCurrentImpact:
             return Color(red: 1.0, green: 0.96, blue: 0.28)
+        case .chaosBurst:
+            return Color(red: 0.72, green: 0.42, blue: 1.0)
         case .trapBurst:
             return Color(red: 0.42, green: 1.0, blue: 0.88)
         case .summonProjectile:
@@ -590,6 +595,8 @@ enum BattleImpactCue: String, CaseIterable {
             return Color.white
         case .shockCurrentImpact:
             return Color(red: 0.42, green: 0.54, blue: 0.72)
+        case .chaosBurst:
+            return Color(red: 0.22, green: 0.92, blue: 0.58)
         case .trapBurst:
             return Color(red: 0.08, green: 0.32, blue: 0.34)
         case .summonProjectile:
@@ -621,6 +628,8 @@ enum BattleImpactCue: String, CaseIterable {
             return "电击弩箭命中"
         case .shockCurrentImpact:
             return "电击电流命中"
+        case .chaosBurst:
+            return "混沌命中"
         case .trapBurst:
             return "陷阱爆发"
         case .summonProjectile:
@@ -761,6 +770,8 @@ enum BattleTrajectoryCue: String, CaseIterable {
             return Color(red: 0.40, green: 0.92, blue: 1.0)
         case .lightning:
             return Color(red: 1.0, green: 0.92, blue: 0.20)
+        case .chaos:
+            return Color(red: 0.72, green: 0.42, blue: 1.0)
         }
     }
 
@@ -1874,6 +1885,8 @@ private struct BattleImpactCueView: View {
                 ShockBoltImpactCue(cue: cue)
             case .shockCurrentImpact:
                 ShockCurrentImpactCue(cue: cue)
+            case .chaosBurst:
+                FireBurstCue(cue: cue)
             case .trapBurst:
                 TrapBurstCue(cue: cue)
             case .summonProjectile:
@@ -2963,6 +2976,8 @@ private extension SkillDamageElement {
             return Color(red: 0.42, green: 0.88, blue: 1.0)
         case .lightning:
             return Color(red: 1.0, green: 0.92, blue: 0.20)
+        case .chaos:
+            return Color(red: 0.72, green: 0.42, blue: 1.0)
         }
     }
 }

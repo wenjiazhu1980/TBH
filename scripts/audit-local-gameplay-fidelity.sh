@@ -501,6 +501,13 @@ source_base_attack_metadata = (
     and "source base attack rows resolve to runtime element and delivery metadata" in self_test_source
     and "source-backed Sorcerer base attacks expose fire projectile visual metadata" in self_test_source
 )
+source_chaos_damage_metadata = (
+    "case chaos" in skills_source
+    and 'case "chaos":' in skills_source
+    and "SourceSkillCatalog.skill(id: \"309021\")?.runtimeDamageElement == .chaos" in self_test_source
+    and "source chaos damage metadata exposes a chaos impact cue" in self_test_source
+    and "case .chaosBurst" in battle_view_source
+)
 if not source_progression_runtime_selector:
     issues.append("SourceItemCatalog must expose runtime source gear progression selection")
 if not loot_uses_source_progression_identity:
@@ -515,6 +522,8 @@ if not support_attack_count_skill_runtime:
     issues.append("Battle must keep support-member attack-count skill state for modeled BASEATTACK_COUNT skills")
 if not source_base_attack_metadata:
     issues.append("Battle must apply source base attack element/delivery metadata to hero and support attack logs")
+if not source_chaos_damage_metadata:
+    issues.append("Runtime skill metadata must preserve checked source Chaos damage rows")
 
 source_gear_rows = tsv_lines(item_source, "sourceGearTypeTSV")
 source_gear_entries = []
@@ -782,6 +791,7 @@ print("legacy_item_name_inference=" + ("enabled" if legacy_item_name_inference e
 print("support_sustained_skill_runtime=" + ("enabled" if support_sustained_skill_runtime else "missing"))
 print("support_attack_count_skill_runtime=" + ("enabled" if support_attack_count_skill_runtime else "missing"))
 print("source_base_attack_metadata=" + ("enabled" if source_base_attack_metadata else "missing"))
+print("source_chaos_damage_metadata=" + ("enabled" if source_chaos_damage_metadata else "missing"))
 print("source_gear_rarity_counts=" + ",".join(f"{key}:{source_gear_rarity_counts[key]}" for key in sorted(source_gear_rarity_counts)))
 print("source_material_category_counts=" + ",".join(f"{key}:{source_material_category_counts[key]}" for key in sorted(source_material_category_counts)))
 print("source_material_rarity_counts=" + ",".join(f"{key}:{source_material_rarity_counts[key]}" for key in sorted(source_material_rarity_counts)))

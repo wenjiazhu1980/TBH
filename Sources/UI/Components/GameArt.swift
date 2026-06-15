@@ -408,6 +408,8 @@ enum GameArt {
             return "skill_2_1"
         case .lightning:
             return "skill_2_2"
+        case .chaos:
+            return fallback
         case .physical:
             return fallback
         case .none:
