@@ -197,6 +197,20 @@ private struct ActiveBattleBuff: Identifiable, Equatable {
     }
 }
 
+private struct ActiveSupportSkillBuff: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let supportSlotIndex: Int
+    var remainingDuration: TimeInterval
+    let rangeDamagePerSecondMultiplier: Double
+    let focusedProjectileOnly: Bool
+    let appliesColdSlow: Bool
+
+    var isExpired: Bool {
+        remainingDuration <= 0
+    }
+}
+
 private enum BattlePartyTarget {
     case hero
     case support(Int)
@@ -252,7 +266,7 @@ class Battle: ObservableObject {
         let resistanceStandIn = Double(blessing.levelOneValue) / 100.0
         return max(0.1, 1.0 - resistanceStandIn)
     }
-    var activeBuffNames: [String] { activeHeroBuffs.map(\.name) }
+    var activeBuffNames: [String] { activeHeroBuffs.map(\.name) + activeSupportSkillBuffs.map(\.name) }
     var activeHeroAttackMultiplier: Double {
         activeHeroBuffs.reduce(1.0) { partial, buff in
             partial * buff.attackMultiplier
@@ -294,6 +308,7 @@ class Battle: ObservableObject {
     private var nextSupportCooldownSkillIndexes: [Int: Int] = [:]
     private var heroBaseAttackCount = 0
     private var activeHeroBuffs: [ActiveBattleBuff] = []
+    private var activeSupportSkillBuffs: [ActiveSupportSkillBuff] = []
     private var unyieldingWillAvailable: Bool
 
     convenience init(
@@ -1386,11 +1401,19 @@ class Battle: ObservableObject {
 
     private func tickActiveHeroBuffs(deltaTime: TimeInterval) {
         applyHeroOverTimeBuffEffects(deltaTime: deltaTime)
+        applySupportOverTimeBuffEffects(deltaTime: deltaTime)
         for index in activeHeroBuffs.indices {
             guard let duration = activeHeroBuffs[index].remainingDuration else { continue }
             activeHeroBuffs[index].remainingDuration = max(0, duration - deltaTime)
         }
+        for index in activeSupportSkillBuffs.indices {
+            activeSupportSkillBuffs[index].remainingDuration = max(
+                0,
+                activeSupportSkillBuffs[index].remainingDuration - max(0, deltaTime)
+            )
+        }
         removeExpiredHeroBuffs()
+        removeExpiredSupportSkillBuffs()
     }
 
     private func consumeHeroAttackBuffCharges() {
@@ -1499,6 +1522,24 @@ class Battle: ObservableObject {
         }
     }
 
+    private func applySupportOverTimeBuffEffects(deltaTime: TimeInterval) {
+        guard deltaTime > 0 else { return }
+        for buff in activeSupportSkillBuffs where buff.rangeDamagePerSecondMultiplier > 0 {
+            guard !isOver else { return }
+            guard let member = aliveSupportMembers.first(where: { $0.slotIndex == buff.supportSlotIndex }) else {
+                continue
+            }
+            if buff.focusedProjectileOnly {
+                applyFocusedSupportProjectileDamageOverTime(from: buff, member: member, deltaTime: deltaTime)
+            } else {
+                let hitIndices = applySupportRangeDamageOverTime(from: buff, member: member, deltaTime: deltaTime)
+                if buff.appliesColdSlow, !isOver {
+                    slowAliveEnemies(at: hitIndices)
+                }
+            }
+        }
+    }
+
     private func applyFocusedProjectileDamageOverTime(from buff: ActiveBattleBuff, deltaTime: TimeInterval) {
         guard let targetIndex = focusedEnemyArrayIndex else { return }
         let target = enemyStates[targetIndex]
@@ -1514,6 +1555,39 @@ class Battle: ObservableObject {
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
         log.append(BattleLogEntry(
             attacker: .hero,
+            damage: hit.amount,
+            isCrit: hit.isCrit,
+            skillName: buff.name,
+            kind: .damage
+        ))
+
+        if defeated {
+            _ = completeEnemy(at: targetIndex)
+        }
+    }
+
+    private func applyFocusedSupportProjectileDamageOverTime(
+        from buff: ActiveSupportSkillBuff,
+        member: PartyMember,
+        deltaTime: TimeInterval
+    ) {
+        guard let targetIndex = focusedEnemyArrayIndex else { return }
+        let target = enemyStates[targetIndex]
+        guard !target.isDefeated, target.hp > 0 else { return }
+
+        let dotAttack = max(
+            1,
+            Int(Double(modifiedSupportAttack(for: member)) * buff.rangeDamagePerSecondMultiplier * deltaTime)
+        )
+        let hit = DamageCalculator.calculateResult(
+            attackerATK: dotAttack,
+            defenderDEF: target.monster.def,
+            critRate: modifiedSupportCritRate,
+            critDamage: 1.5
+        )
+        let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+        log.append(BattleLogEntry(
+            attacker: .support(member.heroClass),
             damage: hit.amount,
             isCrit: hit.isCrit,
             skillName: buff.name,
@@ -1561,6 +1635,49 @@ class Battle: ObservableObject {
         return targetIndices
     }
 
+    @discardableResult
+    private func applySupportRangeDamageOverTime(
+        from buff: ActiveSupportSkillBuff,
+        member: PartyMember,
+        deltaTime: TimeInterval
+    ) -> [Int] {
+        let targetIndices = enemyStates.indices.filter { index in
+            !enemyStates[index].isDefeated && enemyStates[index].hp > 0
+        }
+        guard !targetIndices.isEmpty else { return [] }
+
+        let dotAttack = max(
+            1,
+            Int(Double(modifiedSupportAttack(for: member)) * buff.rangeDamagePerSecondMultiplier * deltaTime)
+        )
+        var defeatedIndices: [Int] = []
+        for index in targetIndices {
+            let target = enemyStates[index]
+            let hit = DamageCalculator.calculateResult(
+                attackerATK: dotAttack,
+                defenderDEF: target.monster.def,
+                critRate: modifiedSupportCritRate,
+                critDamage: 1.5
+            )
+            if damageEnemy(at: index, amount: hit.amount) {
+                defeatedIndices.append(index)
+            }
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: hit.amount,
+                isCrit: hit.isCrit,
+                skillName: buff.name,
+                kind: .damage
+            ))
+        }
+
+        for index in defeatedIndices {
+            guard !isOver else { break }
+            _ = completeEnemy(at: index)
+        }
+        return targetIndices
+    }
+
     private func markEnemiesBleeding(at indices: [Int], skillName: String) {
         for index in indices {
             guard enemyStates.indices.contains(index),
@@ -1581,6 +1698,10 @@ class Battle: ObservableObject {
 
     private func removeExpiredHeroBuffs() {
         activeHeroBuffs.removeAll(where: \.isExpired)
+    }
+
+    private func removeExpiredSupportSkillBuffs() {
+        activeSupportSkillBuffs.removeAll(where: \.isExpired)
     }
 
     private func absorbIncomingDamage(_ damage: Int) -> Int {
@@ -1942,6 +2063,37 @@ class Battle: ObservableObject {
 
     @discardableResult
     private func applySupportSkill(_ skill: Skill, member: PartyMember) -> Bool {
+        if skill.id == "30401" || skill.id == "50501" {
+            _ = activateSupportSustainedDamageBuff(for: skill, member: member, focusedProjectileOnly: true)
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: 0,
+                isCrit: false,
+                skillName: skill.name,
+                kind: .buff
+            ))
+            onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: false))
+            return true
+        }
+
+        if skill.id == "30501" {
+            _ = activateSupportSustainedDamageBuff(
+                for: skill,
+                member: member,
+                focusedProjectileOnly: false,
+                appliesColdSlow: true
+            )
+            log.append(BattleLogEntry(
+                attacker: .support(member.heroClass),
+                damage: 0,
+                isCrit: false,
+                skillName: skill.name,
+                kind: .buff
+            ))
+            onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: false))
+            return true
+        }
+
         if skill.id == "10201" {
             return applySupportRangeDamageSkill(skill, member: member)
         }
@@ -2033,6 +2185,32 @@ class Battle: ObservableObject {
             ))
         }
         onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: false))
+        return true
+    }
+
+    @discardableResult
+    private func activateSupportSustainedDamageBuff(
+        for skill: Skill,
+        member: PartyMember,
+        focusedProjectileOnly: Bool,
+        appliesColdSlow: Bool = false
+    ) -> Bool {
+        guard skill.levelOneValue > 0 else { return false }
+        let buff = ActiveSupportSkillBuff(
+            id: "support:\(member.slotIndex):\(skill.id)",
+            name: skill.name,
+            supportSlotIndex: member.slotIndex,
+            remainingDuration: max(1, skill.cooldown),
+            rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+            focusedProjectileOnly: focusedProjectileOnly,
+            appliesColdSlow: appliesColdSlow
+        )
+
+        if let index = activeSupportSkillBuffs.firstIndex(where: { $0.id == buff.id }) {
+            activeSupportSkillBuffs[index] = buff
+        } else {
+            activeSupportSkillBuffs.append(buff)
+        }
         return true
     }
 

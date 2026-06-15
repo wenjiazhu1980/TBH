@@ -1278,6 +1278,55 @@ import Testing
         #expect(zip(hpBeforeHydraTick, hpAfterHydraTick).contains { before, after in after < before })
     }
 
+    @Test func supportFlameHydraKeepsSupportAttributedSustainedDamage() {
+        let hero = Hero()
+        var party = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        party.setHeroClass(.sorcerer, atSlot: 1)
+        var loadouts = ActiveSkillLoadouts()
+        loadouts.setSkills(["30401"], for: .sorcerer)
+        let monsters = (1...3).map { index in
+            Monster(
+                id: "support-flame-hydra-\(index)",
+                name: "支援烈焰九头蛇训练 \(index)",
+                hp: 1_000_000,
+                atk: 1,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            )
+        }
+        let battle = Battle(
+            hero: hero,
+            monsters: monsters,
+            party: party,
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: loadouts
+        )
+
+        battle.update(deltaTime: 1)
+        let hpBeforeHydraTick = battle.enemyStates.map(\.hp)
+        battle.update(deltaTime: 1)
+        let hpAfterHydraTick = battle.enemyStates.map(\.hp)
+
+        #expect(battle.activeBuffNames.contains("烈焰九头蛇"))
+        #expect(PlayerBattleStatusBadge.visible(for: battle).contains(.flameHydra))
+        #expect(PlayerBattleDeployable.visible(for: battle).contains(.flameHydra))
+        #expect(battle.log.contains {
+            $0.attacker == .support(.sorcerer) &&
+                $0.skillName == "烈焰九头蛇" &&
+                $0.kind == .buff
+        })
+        #expect(battle.log.contains {
+            $0.attacker == .support(.sorcerer) &&
+                $0.skillName == "烈焰九头蛇" &&
+                $0.kind == .damage
+        })
+        #expect(zip(hpBeforeHydraTick, hpAfterHydraTick).contains { before, after in after < before })
+    }
+
     @Test func snowstormDealsDamageOverTimeAndCoolsLiveWave() {
         let hero = Hero()
         hero.changeClass(to: .sorcerer)

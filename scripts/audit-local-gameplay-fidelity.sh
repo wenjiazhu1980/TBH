@@ -9,6 +9,7 @@ difficulty_swift="${DIFFICULTY_SWIFT:-Sources/Game/Progress/Difficulty.swift}"
 chapter_swift="${CHAPTER_SWIFT:-Sources/Game/Progress/Chapter.swift}"
 item_swift="${ITEM_SWIFT:-Sources/Game/Inventory/Item.swift}"
 loot_table_swift="${LOOT_TABLE_SWIFT:-Sources/Game/Inventory/LootTable.swift}"
+battle_swift="${BATTLE_SWIFT:-Sources/Game/Combat/Battle.swift}"
 battle_view_swift="${BATTLE_VIEW_SWIFT:-Sources/UI/Panels/BattleView.swift}"
 
 require_tool() {
@@ -20,7 +21,7 @@ require_tool() {
 
 require_tool python3
 
-python3 - "$hero_swift" "$skills_swift" "$rune_swift" "$stage_swift" "$difficulty_swift" "$chapter_swift" "$item_swift" "$loot_table_swift" "$battle_view_swift" <<'PY'
+python3 - "$hero_swift" "$skills_swift" "$rune_swift" "$stage_swift" "$difficulty_swift" "$chapter_swift" "$item_swift" "$loot_table_swift" "$battle_swift" "$battle_view_swift" <<'PY'
 import re
 import sys
 from collections import Counter
@@ -34,9 +35,10 @@ difficulty_path = Path(sys.argv[5])
 chapter_path = Path(sys.argv[6])
 item_path = Path(sys.argv[7])
 loot_table_path = Path(sys.argv[8])
-battle_view_path = Path(sys.argv[9])
+battle_path = Path(sys.argv[9])
+battle_view_path = Path(sys.argv[10])
 
-for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_view_path]:
+for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_path, battle_view_path]:
     if not path.is_file():
         print(f"required source file does not exist: {path}", file=sys.stderr)
         sys.exit(2)
@@ -49,6 +51,7 @@ difficulty_source = difficulty_path.read_text(encoding="utf-8")
 chapter_source = chapter_path.read_text(encoding="utf-8")
 item_source = item_path.read_text(encoding="utf-8")
 loot_table_source = loot_table_path.read_text(encoding="utf-8")
+battle_source = battle_path.read_text(encoding="utf-8")
 battle_view_source = battle_view_path.read_text(encoding="utf-8")
 
 ORIGINAL = {
@@ -457,12 +460,22 @@ source_progression_runtime_selector = bool(re.search(
 ))
 loot_uses_source_progression_identity = "SourceItemCatalog.progression(for: type, itemLevel: itemLevel)" in loot_table_source and "来源装备" in loot_table_source
 synthesis_preview_uses_source_progression = "outputSourceProgression" in item_source and "SourceItemCatalog.progression(for: $0, itemLevel: level)" in item_source
+support_sustained_skill_runtime = (
+    "ActiveSupportSkillBuff" in battle_source
+    and "activeSupportSkillBuffs" in battle_source
+    and "applySupportOverTimeBuffEffects" in battle_source
+    and "activateSupportSustainedDamageBuff" in battle_source
+    and 'skill.id == "30401" || skill.id == "50501"' in battle_source
+    and 'skill.id == "30501"' in battle_source
+)
 if not source_progression_runtime_selector:
     issues.append("SourceItemCatalog must expose runtime source gear progression selection")
 if not loot_uses_source_progression_identity:
     issues.append("LootTable.makeItem must use checked source base gear progression name/id")
 if not synthesis_preview_uses_source_progression:
     issues.append("SynthesisPreview must expose checked source base gear progression identity")
+if not support_sustained_skill_runtime:
+    issues.append("Battle must keep support-member sustained summon/range skill state for Hydra/Snowstorm/Turret")
 
 source_gear_rows = tsv_lines(item_source, "sourceGearTypeTSV")
 source_gear_entries = []
@@ -688,7 +701,7 @@ rows = [
     ("player_deployable_markers", len(player_deployable_markers), None, CURRENT_BASELINE["player_deployable_markers"], "Hydra/trap/turret field markers"),
 ]
 
-print("source_files=" + ",".join(str(path) for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_view_path]))
+print("source_files=" + ",".join(str(path) for path in [hero_path, skills_path, rune_path, stage_path, difficulty_path, chapter_path, item_path, loot_table_path, battle_path, battle_view_path]))
 print("original_reference=Steam store and taskbarhero.org Wiki facts already recorded in docs/original-fidelity-review.md")
 print()
 print("area                         current       original      status      note")
@@ -726,6 +739,7 @@ print("source_rune_icon_distribution=" + ",".join(f"{icon}:{count}" for icon, co
 print("rune_dependency_edges=" + ",".join(f"{source}->{target}" for source, target in rune_dependency_edges) if rune_dependency_edges else "rune_dependency_edges=none")
 print("runtime_source_gear_progression_names=" + ("enabled" if source_progression_runtime_selector and loot_uses_source_progression_identity else "missing"))
 print("synthesis_preview_source_progression=" + ("enabled" if synthesis_preview_uses_source_progression else "missing"))
+print("support_sustained_skill_runtime=" + ("enabled" if support_sustained_skill_runtime else "missing"))
 print("source_gear_rarity_counts=" + ",".join(f"{key}:{source_gear_rarity_counts[key]}" for key in sorted(source_gear_rarity_counts)))
 print("source_material_category_counts=" + ",".join(f"{key}:{source_material_category_counts[key]}" for key in sorted(source_material_category_counts)))
 print("source_material_rarity_counts=" + ",".join(f"{key}:{source_material_rarity_counts[key]}" for key in sorted(source_material_rarity_counts)))

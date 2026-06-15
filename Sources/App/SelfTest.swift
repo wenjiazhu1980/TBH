@@ -1866,6 +1866,54 @@ enum SelfTest {
             "Flame Hydra summons a checked fire projectile damage source"
         )
 
+        var supportHydraParty = HeroParty(primaryClass: .knight, unlockedSlotCount: 2)
+        supportHydraParty.setHeroClass(.sorcerer, atSlot: 1)
+        var supportHydraLoadouts = ActiveSkillLoadouts()
+        supportHydraLoadouts.setSkills(["30401"], for: .sorcerer)
+        let supportHydraHero = Hero()
+        let supportHydraMonsters = (1...3).map { index in
+            Monster(
+                id: "support-flame-hydra-\(index)",
+                name: "支援烈焰九头蛇训练 \(index)",
+                hp: 1_000_000,
+                atk: 1,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            )
+        }
+        let supportHydraBattle = Battle(
+            hero: supportHydraHero,
+            monsters: supportHydraMonsters,
+            party: supportHydraParty,
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: supportHydraLoadouts
+        )
+        supportHydraBattle.update(deltaTime: 1)
+        let hpBeforeSupportHydra = supportHydraBattle.enemyStates.map(\.hp)
+        supportHydraBattle.update(deltaTime: 1)
+        let hpAfterSupportHydra = supportHydraBattle.enemyStates.map(\.hp)
+        expect(
+            supportHydraBattle.activeBuffNames.contains("烈焰九头蛇") &&
+                PlayerBattleStatusBadge.visible(for: supportHydraBattle).contains(.flameHydra) &&
+                PlayerBattleDeployable.visible(for: supportHydraBattle).contains(.flameHydra) &&
+                supportHydraBattle.log.contains {
+                    $0.attacker == .support(.sorcerer) &&
+                        $0.skillName == "烈焰九头蛇" &&
+                        $0.kind == .buff
+                } &&
+                supportHydraBattle.log.contains {
+                    $0.attacker == .support(.sorcerer) &&
+                        $0.skillName == "烈焰九头蛇" &&
+                        $0.kind == .damage
+                } &&
+                zip(hpBeforeSupportHydra, hpAfterSupportHydra).contains { before, after in after < before },
+            "support Flame Hydra keeps its own sustained summon damage and visible deployable state"
+        )
+
         let snowstormHero = Hero()
         snowstormHero.changeClass(to: .sorcerer)
         let snowstormMonsters = (1...3).map { index in
