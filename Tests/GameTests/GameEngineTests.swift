@@ -457,6 +457,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         engine.progress.currentDifficultyIndex = 3
         engine.progress.currentStageIndex = 8
         engine.setHeroClass(.knight)
+        engine.setActiveSkill("10601", for: .knight, slotIndex: 0)
 
         let firstBattle = try #require(engine.currentBattle)
         engine.hero.takeDamage(engine.hero.currentHP - 1)
