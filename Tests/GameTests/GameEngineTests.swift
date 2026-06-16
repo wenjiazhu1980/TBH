@@ -136,6 +136,30 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.soundEffectsEnabled)
     }
 
+    @Test func resetGameWritesCleanSaveForReload() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-reset-save-\(UUID().uuidString)", isDirectory: true)
+        let manager = SaveManager(directory: tempDir)
+        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        engine.hero.gainGold(999)
+        engine.hero.gainXP(10_000)
+        engine.statistics.recordDefeat()
+        engine.save()
+
+        #expect(manager.saveFileExists)
+        #expect(engine.resetGame())
+        #expect(manager.saveFileExists)
+
+        let reloaded = GameEngine(saveManager: manager, audio: RecordingAudio())
+        reloaded.start()
+        reloaded.stop()
+
+        #expect(reloaded.hero.level == 1)
+        #expect(reloaded.hero.gold == 0)
+        #expect(reloaded.statistics.deaths == 0)
+        #expect(reloaded.inventory.items.isEmpty)
+    }
+
     @Test func cubeInfusionConsumesUnlockedItemsAndProtectsLockedItems() {
         let engine = makeEngine()
         let unlocked = Item(id: "cube1", name: "Cube 材料", rarity: .rare, slot: nil, stats: ItemStats(), description: "")
@@ -360,6 +384,60 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         boosted.stop()
         #expect(boosted.statistics.offlineXP > unlocked.statistics.offlineXP)
         #expect(boosted.statistics.offlineGold > unlocked.statistics.offlineGold)
+    }
+
+    @Test func overleveledSaveIsClampedToCurrentProgressOnLoad() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-level-clamp-\(UUID().uuidString)", isDirectory: true)
+        let manager = SaveManager(directory: tempDir)
+        let hero = Hero()
+        hero.level = 15_000
+        hero.currentXP = 999_999_999
+        hero.currentHP = 999_999
+        let progress = ProgressTracker()
+
+        manager.save(SaveData(
+            hero: hero,
+            inventory: Inventory(),
+            progress: progress,
+            statistics: GameStatistics(),
+            timestamp: Date()
+        ))
+
+        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        engine.start()
+        engine.stop()
+
+        let maxLevel = HeroLevelPacing.maxHeroLevel(for: progress)
+        #expect(engine.hero.level == maxLevel)
+        #expect(engine.hero.currentXP < engine.hero.xpForNextLevel())
+        #expect(engine.hero.currentHP <= engine.hero.maxHP)
+    }
+
+    @Test func offlineXPCannotExceedCurrentProgressLevelCap() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-offline-level-cap-\(UUID().uuidString)", isDirectory: true)
+        let manager = SaveManager(directory: tempDir)
+        var progress = ProgressTracker()
+        progress.currentDifficultyIndex = Difficulty.allCases.count - 1
+        progress.currentChapterIndex = Chapter.allCases.count - 1
+        progress.currentStageIndex = StageDefinition.stagesPerAct - 2
+
+        manager.save(SaveData(
+            hero: Hero(),
+            runeTree: RuneTree(unlockedNodes: [.offlineRewards, .offlineXPBoost]),
+            inventory: Inventory(),
+            progress: progress,
+            statistics: GameStatistics(),
+            timestamp: Date().addingTimeInterval(-OfflineProgress.maxOfflineSeconds)
+        ))
+
+        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        engine.start()
+        engine.stop()
+
+        #expect(engine.statistics.offlineXP > 0)
+        #expect(engine.hero.level <= HeroLevelPacing.maxHeroLevel(for: progress))
     }
 
     @Test func completionSettlementPausesOfflineRewardsUntilNextPlaythrough() {

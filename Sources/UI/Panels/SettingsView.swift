@@ -5,8 +5,8 @@ import AppKit
 struct SettingsView: View {
     @ObservedObject var gameEngine: GameEngine
     @Binding var panelScale: Double
-    @State private var showResetAlert = false
     @State private var showRuneTreeResetAlert = false
+    @State private var resetFailureMessage: String?
 
     var body: some View {
         ScrollView {
@@ -369,7 +369,7 @@ struct SettingsView: View {
                         .controlSize(.small)
 
                         Button("重置存档", role: .destructive) {
-                            showResetAlert = true
+                            confirmAndResetGame()
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -403,14 +403,6 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .alert("确认重置", isPresented: $showResetAlert) {
-            Button("取消", role: .cancel) {}
-            Button("重置", role: .destructive) {
-                gameEngine.resetGame()
-            }
-        } message: {
-            Text("将删除所有存档数据，此操作不可撤销。")
-        }
         .alert("确认重置符文树", isPresented: $showRuneTreeResetAlert) {
             Button("取消", role: .cancel) {}
             Button("重置", role: .destructive) {
@@ -418,6 +410,17 @@ struct SettingsView: View {
             }
         } message: {
             Text("将清空已解锁符文，并返还已核对的金币成本。")
+        }
+        .alert(
+            "重置失败",
+            isPresented: Binding(
+                get: { resetFailureMessage != nil },
+                set: { if !$0 { resetFailureMessage = nil } }
+            )
+        ) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text(resetFailureMessage ?? "")
         }
     }
 
@@ -463,6 +466,21 @@ struct SettingsView: View {
     private func quitGame() {
         gameEngine.stop()
         NSApplication.shared.terminate(nil)
+    }
+
+    private func confirmAndResetGame() {
+        let alert = NSAlert()
+        alert.messageText = "确认重置"
+        alert.informativeText = "将删除所有存档数据，此操作不可撤销。"
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "重置")
+        alert.addButton(withTitle: "取消")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let deletedExistingSave = gameEngine.resetGame()
+        if !deletedExistingSave {
+            resetFailureMessage = "无法删除旧存档文件，已重置当前内存状态并尝试写入干净存档。请检查存档目录权限。"
+        }
     }
 }
 

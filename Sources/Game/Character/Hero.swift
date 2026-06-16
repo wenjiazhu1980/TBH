@@ -254,13 +254,19 @@ enum HeroLevelPacing {
         let cappedLevel = max(1, maxLevel)
         guard hero.level <= cappedLevel else { return 0 }
 
-        var grantableXP = max(0, hero.xpForNextLevel() - 1 - hero.currentXP)
-        var simulatedLevel = hero.level
-
-        while simulatedLevel < cappedLevel {
-            grantableXP += Hero.xpForNextLevel(at: simulatedLevel)
-            simulatedLevel += 1
+        if hero.level == cappedLevel {
+            return max(0, hero.xpForNextLevel() - 1 - hero.currentXP)
         }
+
+        var grantableXP = 0
+        var simulatedLevel = hero.level
+        var simulatedXP = hero.currentXP
+        while simulatedLevel < cappedLevel {
+            grantableXP += max(0, Hero.xpForNextLevel(at: simulatedLevel) - simulatedXP)
+            simulatedLevel += 1
+            simulatedXP = 0
+        }
+        grantableXP += max(0, Hero.xpForNextLevel(at: cappedLevel) - 1)
 
         return max(0, grantableXP)
     }

@@ -35,6 +35,30 @@ import Testing
         #expect(hero.level == 2, "Hero should level up")
     }
 
+    @Test func levelPacingCapsXPByCurrentProgress() {
+        let hero = Hero()
+        let progress = ProgressTracker()
+        let maxLevel = HeroLevelPacing.maxHeroLevel(for: progress)
+
+        #expect(maxLevel == 6)
+
+        let appliedXP = HeroLevelPacing.grantXP(1_000_000, to: hero, maxLevel: maxLevel)
+
+        #expect(appliedXP < 1_000_000)
+        #expect(hero.level == maxLevel)
+        #expect(hero.currentXP == hero.xpForNextLevel() - 1)
+    }
+
+    @Test func levelPacingAllowsNewGamePlusHeadroomWithoutUnboundedGrowth() {
+        var progress = ProgressTracker()
+        progress.currentDifficultyIndex = Difficulty.allCases.count - 1
+        progress.currentChapterIndex = Chapter.allCases.count - 1
+        progress.currentStageIndex = StageDefinition.stagesPerAct - 1
+        progress.playthrough = 3
+
+        #expect(HeroLevelPacing.maxHeroLevel(for: progress) == 140)
+    }
+
     @Test func takeDamage() {
         let hero = Hero()
         let initialHP = hero.currentHP

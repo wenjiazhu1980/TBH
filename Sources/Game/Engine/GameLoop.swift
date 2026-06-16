@@ -194,7 +194,7 @@ class GameEngine: ObservableObject {
             let clearedStage = progress.currentStage
             let clearedDifficulty = progress.currentDifficulty
             let oldLevel = hero.level
-            hero.gainXP(rewards.xp)
+            grantHeroXP(rewards.xp)
             handleLevelGain(from: oldLevel)
             hero.gainGold(rewards.gold)
             // 背包满时战利品丢失；自动装备成功也视作已保留战利品。
@@ -616,7 +616,7 @@ class GameEngine: ObservableObject {
         )
 
         let oldLevel = hero.level
-        hero.gainXP(rewards.xp)
+        _ = grantHeroXP(rewards.xp)
         handleLevelGain(from: oldLevel)
         hero.gainGold(rewards.gold)
         statistics.offlineXP += rewards.xp
@@ -662,14 +662,16 @@ class GameEngine: ObservableObject {
         worseEquipmentHandling = data.worseEquipmentHandling
         soundEffectsEnabled = data.soundEffectsEnabled
         unyieldingWillConsumedStageKey = data.unyieldingWillConsumedStageKey
+        enforceHeroLevelPacing()
         if autoEquipBestItems {
             equipBestItemsFromInventory()
         }
     }
 
     /// 删除存档并将内存中的游戏状态完整重置
-    func resetGame() {
-        saveManager.deleteSave()
+    @discardableResult
+    func resetGame() -> Bool {
+        let didDeleteSave = saveManager.deleteSave()
         hero = Hero()
         runeTree = RuneTree()
         cubeProgress = CubeProgress()
@@ -688,6 +690,8 @@ class GameEngine: ObservableObject {
         ticksSinceLastSave = 0
         applyRuneTreeUnlocks()
         startNextBattle()
+        save()
+        return didDeleteSave
     }
 
     private func handleLevelGain(from oldLevel: Int) {
@@ -695,6 +699,15 @@ class GameEngine: ObservableObject {
         guard gainedLevels > 0 else { return }
         applyRuneTreeUnlocks()
         audio.play(.levelUp)
+    }
+
+    @discardableResult
+    private func grantHeroXP(_ amount: Int) -> Int {
+        HeroLevelPacing.grantXP(amount, to: hero, maxLevel: HeroLevelPacing.maxHeroLevel(for: progress))
+    }
+
+    private func enforceHeroLevelPacing() {
+        hero.clampLevel(to: HeroLevelPacing.maxHeroLevel(for: progress))
     }
 
     private func applyRuneTreeUnlocks() {

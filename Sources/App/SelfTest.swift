@@ -1279,6 +1279,28 @@ enum SelfTest {
         let revived = hero.revive(withHP: hero.maxHP * 3)
         let cappedHeal = hero.heal(999)
         expect(revived == hero.maxHP * 3 && hero.currentHP == hero.maxHP * 3 && cappedHeal == 0, "revive can restore above max HP without heal clamping it down")
+
+        let pacedHero = Hero()
+        let pacedProgress = ProgressTracker()
+        let pacedMaxLevel = HeroLevelPacing.maxHeroLevel(for: pacedProgress)
+        let pacedXP = HeroLevelPacing.grantXP(1_000_000, to: pacedHero, maxLevel: pacedMaxLevel)
+        expect(
+            pacedMaxLevel == 6 &&
+                pacedXP < 1_000_000 &&
+                pacedHero.level == pacedMaxLevel &&
+                pacedHero.currentXP == pacedHero.xpForNextLevel() - 1,
+            "hero XP gain is capped by current campaign progress to prevent runaway levels"
+        )
+
+        var newGamePlusProgress = ProgressTracker()
+        newGamePlusProgress.currentDifficultyIndex = Difficulty.allCases.count - 1
+        newGamePlusProgress.currentChapterIndex = Chapter.allCases.count - 1
+        newGamePlusProgress.currentStageIndex = StageDefinition.stagesPerAct - 1
+        newGamePlusProgress.playthrough = 3
+        expect(
+            HeroLevelPacing.maxHeroLevel(for: newGamePlusProgress) == 140,
+            "hero level cap keeps bounded new-game-plus headroom"
+        )
     }
 
     private static func partyAndSupport() {
@@ -4752,7 +4774,8 @@ enum SelfTest {
         print("[GameEngine equip/reset]")
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TBHSelfTest-\(UUID().uuidString)", isDirectory: true)
-        let engine = GameEngine(saveManager: SaveManager(directory: tempDir), audio: SilentAudio())
+        let saveManager = SaveManager(directory: tempDir)
+        let engine = GameEngine(saveManager: saveManager, audio: SilentAudio())
 
         let sword1 = Item(id: "s1", name: "铁剑", rarity: .common, slot: .weapon, stats: ItemStats(bonusATK: 5), description: "")
         let sword2 = Item(id: "s2", name: "钢剑", rarity: .rare, slot: .weapon, stats: ItemStats(bonusATK: 10), description: "")
@@ -5120,7 +5143,7 @@ enum SelfTest {
         expect(engine.currentBattle?.monster.name == "骷髅王" && engine.battleLockReason == nil, "boss battle starts with Soul Stone")
 
         engine.hero.gainGold(999)
-        engine.resetGame()
+        let didReset = engine.resetGame()
         expect(engine.hero.gold == 0 && engine.hero.level == 1 && engine.inventory.items.isEmpty, "resetGame clears state")
         expect(engine.cubeProgress.totalExperience == 0 && engine.cubeProgress.infusedItemCount == 0, "resetGame clears Cube progress")
         expect(
@@ -5136,6 +5159,18 @@ enum SelfTest {
         expect(
             engine.activeSkillLoadouts.activeSkills(for: .knight, heroLevel: 1, slotCount: 1).map(\.id) == ["10101"],
             "resetGame clears selected active skill loadouts"
+        )
+
+        let reloadedAfterReset = GameEngine(saveManager: saveManager, audio: SilentAudio())
+        reloadedAfterReset.start()
+        reloadedAfterReset.stop()
+        expect(didReset && saveManager.saveFileExists, "resetGame deletes the old save and writes a clean replacement save")
+        expect(
+            reloadedAfterReset.hero.level == 1 &&
+                reloadedAfterReset.hero.gold == 0 &&
+                reloadedAfterReset.statistics.monstersKilled == 0 &&
+                reloadedAfterReset.inventory.items.isEmpty,
+            "resetGame clean save reloads without stale high-level data"
         )
     }
 

@@ -148,8 +148,27 @@ class SaveManager {
         }
     }
 
-    func deleteSave() {
-        try? FileManager.default.removeItem(at: saveURL)
-        lastSaveTimestamp = nil
+    @discardableResult
+    func deleteSave() -> Bool {
+        guard FileManager.default.fileExists(atPath: saveURL.path) else {
+            lastSaveTimestamp = nil
+            return true
+        }
+        do {
+            try FileManager.default.removeItem(at: saveURL)
+            lastSaveTimestamp = nil
+            return true
+        } catch {
+            Self.logger.error("Delete save failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    var saveFileExists: Bool {
+        FileManager.default.fileExists(atPath: saveURL.path)
+    }
+
+    var saveFilePath: String {
+        saveURL.path
     }
 }
