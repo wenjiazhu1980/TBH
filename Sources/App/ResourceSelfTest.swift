@@ -53,26 +53,24 @@ enum ResourceSelfTest {
     ]
 
     private static var requiredSprites: [String] {
-        uniqueResourceNames(
+        let heroSprites = HeroClass.allCases.flatMap { heroClass in
+            [
+                GameArt.heroSpriteName(for: heroClass),
+                GameArt.battleHeroSpriteName(for: heroClass)
+            ]
+        }
+        let equipmentIcons = EquipmentType.allCases.map { GameArt.itemIconName(for: $0) }
+        let gearIcons = SourceItemCatalog.allGearTypes.flatMap { $0.progressions.map(\.iconName) }
+        let materialIcons = SourceItemCatalog.allMaterials.map { GameArt.itemIconName(for: $0) }
+        let chestIcons = SourceItemCatalog.allStageChests.map { GameArt.stageChestIconName(for: $0) }
+
+        return uniqueResourceNames(
             requiredStaticSprites +
-                HeroClass.allCases.flatMap {
-                    [
-                        GameArt.heroSpriteName(for: $0),
-                        GameArt.battleHeroSpriteName(for: $0)
-                    ]
-                } +
-                EquipmentType.allCases.map {
-                    GameArt.itemIconName(for: $0)
-                } +
-                SourceItemCatalog.allGearTypes.flatMap {
-                    $0.progressions.map(\.iconName)
-                } +
-                SourceItemCatalog.allMaterials.map {
-                    GameArt.itemIconName(for: $0)
-                } +
-                SourceItemCatalog.allStageChests.map {
-                    GameArt.stageChestIconName(for: $0)
-                } +
+                heroSprites +
+                equipmentIcons +
+                gearIcons +
+                materialIcons +
+                chestIcons +
                 GameArt.skillIconNames +
                 GameArt.passiveSkillIconNames +
                 GameArt.runeTreeIconNames
