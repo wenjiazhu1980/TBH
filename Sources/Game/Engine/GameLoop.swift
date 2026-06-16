@@ -34,7 +34,7 @@ class GameEngine: ObservableObject {
     /// 每 30 个 tick（约 30 秒）自动保存一次
     private let autosaveTicks = 30
     private var ticksSinceLastSave = 0
-    private let retainedBattleLogLimit = 80
+    private let retainedBattleLogLimit = 300
 
     init(saveManager: SaveManager = SaveManager(), audio: GameAudioPlaying = GameAudio.shared) {
         self.hero = Hero()

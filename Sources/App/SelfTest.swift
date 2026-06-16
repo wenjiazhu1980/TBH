@@ -331,7 +331,7 @@ enum SelfTest {
             "battle scene keeps a readable taskbar-style height"
         )
         expect(
-            BattleLogMetrics.visibleEntryLimit >= 8 &&
+            BattleLogMetrics.visibleEntryLimit >= 50 &&
                 BattleLogMetrics.panelHeight >= 116,
             "battle tab reserves visible space for recent combat log entries"
         )

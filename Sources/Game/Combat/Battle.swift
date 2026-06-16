@@ -399,13 +399,14 @@ class Battle: ObservableObject {
                 critDamage: hero.critDamage
             )
             let defeated = damageFocusedEnemy(hit.amount, leechForHero: true)
-            log.append(BattleLogEntry(
+            let logEntry = BattleLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
                 damageElement: HeroSkills.baseAttackDamageElement(for: primaryHeroClass),
                 delivery: HeroSkills.baseAttackDelivery(for: primaryHeroClass)
-            ))
+            )
+            log.append(logEntry)
             onEvent?(.heroAttack(isCrit: hit.isCrit))
             heroCooldown = heroAttackInterval
             heroBaseAttackCount += 1

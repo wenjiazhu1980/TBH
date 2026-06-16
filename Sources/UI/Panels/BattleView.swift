@@ -26,7 +26,16 @@ struct BattleView: View {
                     }
 
                     BattleLogPanel(
-                        entries: Array(gameEngine.recentBattleLog.suffix(BattleLogMetrics.visibleEntryLimit)),
+                        entries: Array(gameEngine.recentBattleLog
+                            .filter { entry in
+                                switch entry.attacker {
+                                case .hero, .monster:
+                                    return true
+                                case .support:
+                                    return false
+                                }
+                            }
+                            .suffix(BattleLogMetrics.visibleEntryLimit)),
                         totalCount: gameEngine.recentBattleLog.count
                     )
                 }
@@ -1189,7 +1198,7 @@ enum BattleSceneMetrics {
 }
 
 enum BattleLogMetrics {
-    static let visibleEntryLimit = 8
+    static let visibleEntryLimit = 50
     static let panelHeight: CGFloat = 122
     static let rowSpacing: CGFloat = 3
 }
