@@ -192,8 +192,11 @@ import Testing
         #expect(SourceRuneCatalog.runtimeUnmodeledOnlyIconNames.count == 25)
         #expect(SourceRuneCatalog.runtimeSharedModeledAndUnmodeledIconNames == [
             "MaxInventorySlot",
+            "MaxAmountStageBossChest",
+            "OfflineRewardGoldPercent",
             "OfflineRewardExpPercent",
-            "OfflineRewardGoldPercent"
+            "MaxAmountNormalChest",
+            "MaxAmountActBossChest"
         ])
         #expect(GameArt.runeTreeIconName(for: .partySlot2) == "source_rune_UnlockArrangeSlotCount")
         #expect(GameArt.runeTreeIconName(for: .partySlot3) == "source_rune_UnlockArrangeSlotCount")

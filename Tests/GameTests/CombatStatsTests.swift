@@ -921,7 +921,7 @@ import Testing
         ) == .sacredBladeGlow)
         #expect(BattleUtilityCue.visible(
             for: BattleLogEntry(attacker: .hero, damage: 0, isCrit: false, skillName: "将军怒吼", kind: .buff)
-        ) == .buffAura)
+        ) == .generalsCryRoar)
     }
 
     @Test func DamageAndMonsterEntriesDoNotRenderUtilityCues() {
@@ -1891,7 +1891,14 @@ import Testing
                 activeSkillLoadouts: loadout
             )
 
-            battle.update(deltaTime: 1)
+            for _ in 0..<5 {
+                battle.update(deltaTime: 1)
+                let explosiveBoltHits = battle.log.filter { $0.skillName == "爆炸弩箭" && $0.kind == .damage }
+                if explosiveBoltHits.count >= 3 {
+                    break
+                }
+            }
+
             return battle.log
                 .filter { $0.skillName == "爆炸弩箭" && $0.kind == .damage }
                 .map(\.damage)
