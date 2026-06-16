@@ -127,8 +127,12 @@ class Hero: ObservableObject, Codable {
         max(1.0, baseStats.critDamage + equipment.bonusCritDamage + passiveRuntimeEffects.passiveCriticalDamage)
     }
 
+    static func xpForNextLevel(at level: Int) -> Int {
+        Int(pow(Double(max(level, 1)), 1.5) * 100)
+    }
+
     func xpForNextLevel() -> Int {
-        return Int(pow(Double(level), 1.5) * 100)
+        Self.xpForNextLevel(at: level)
     }
 
     func gainXP(_ amount: Int) {
@@ -174,6 +178,17 @@ class Hero: ObservableObject, Codable {
         currentHP = wasAtFullHealth ? maxHP : min(currentHP, maxHP)
     }
 
+    func clampLevel(to maxLevel: Int) {
+        let cappedLevel = max(1, maxLevel)
+        if level > cappedLevel {
+            level = cappedLevel
+        }
+        currentXP = min(max(currentXP, 0), max(0, xpForNextLevel() - 1))
+        if currentHP > 0 {
+            currentHP = min(currentHP, maxHP)
+        }
+    }
+
     // MARK: - Codable
 
     enum CodingKeys: String, CodingKey {
@@ -206,5 +221,47 @@ class Hero: ObservableObject, Codable {
 
     init() {
         _currentHP = Published(initialValue: heroClass.baseStats.hp)
+    }
+}
+
+enum HeroLevelPacing {
+    static let stageLevelBuffer = 5
+    static let playthroughLevelBonus = 20
+
+    static func maxHeroLevel(for progress: ProgressTracker) -> Int {
+        let stageLevel = progress.currentStage
+            .runtimeData(for: progress.currentDifficulty)
+            .level
+        let playthroughBonus = NewGamePlusTuning.completedCycles(before: progress.playthrough) * playthroughLevelBonus
+        return max(1, stageLevel + stageLevelBuffer + playthroughBonus)
+    }
+
+    @discardableResult
+    static func grantXP(_ amount: Int, to hero: Hero, maxLevel: Int) -> Int {
+        let requestedXP = max(0, amount)
+        let grantableXP = min(requestedXP, maxGrantableXP(for: hero, maxLevel: maxLevel))
+        guard grantableXP > 0 else {
+            hero.clampLevel(to: maxLevel)
+            return 0
+        }
+
+        hero.gainXP(grantableXP)
+        hero.clampLevel(to: maxLevel)
+        return grantableXP
+    }
+
+    private static func maxGrantableXP(for hero: Hero, maxLevel: Int) -> Int {
+        let cappedLevel = max(1, maxLevel)
+        guard hero.level <= cappedLevel else { return 0 }
+
+        var grantableXP = max(0, hero.xpForNextLevel() - 1 - hero.currentXP)
+        var simulatedLevel = hero.level
+
+        while simulatedLevel < cappedLevel {
+            grantableXP += Hero.xpForNextLevel(at: simulatedLevel)
+            simulatedLevel += 1
+        }
+
+        return max(0, grantableXP)
     }
 }

@@ -221,6 +221,10 @@ enum SelfTest {
             heroSpritesFitCompactBattleStrip,
             "battle scene hero sprites fit inside the compact taskbar battle strip without cropping"
         )
+        expect(
+            BattleHeroSpriteMetrics.enemyFacingXScale == -1,
+            "battle scene flips player hero sprites to face the right-side monster lane"
+        )
     }
 
     private static func skillArtMappings() {
@@ -5182,6 +5186,9 @@ enum SelfTest {
         let combatSoundPlayed = audio.events.contains { event in
             event == .heroAttack || event == .heroCriticalHit || event == .skillCast
         }
+        let retainedDamageLog = engine.recentBattleLog.contains { entry in
+            entry.kind == .damage && entry.damage > 0
+        }
 
         expect(ticks > 0 && ticks <= 5, "runtime tick loop reaches a terminal battle state")
         expect(engine.statistics.monstersKilled == 1, "runtime victory records the cleared encounter")
@@ -5192,6 +5199,7 @@ enum SelfTest {
         expect(battleRestarted, "runtime victory starts the next battle after settlement")
         expect(audio.events.contains(.battleWon), "runtime battle victory emits the battle-won sound event")
         expect(combatSoundPlayed, "runtime battle tick emits combat sound events before settlement")
+        expect(retainedDamageLog, "runtime retains recent damage log entries after battle refresh for UI animation and log scrolling")
         expect(lootFound == lootSoundPlayed, "runtime loot-found sound matches retained battle loot")
     }
 

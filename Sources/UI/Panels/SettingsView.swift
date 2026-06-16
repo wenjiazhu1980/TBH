@@ -394,7 +394,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("TBH: Task Bar Hero — macOS Edition")
                             .font(.system(size: 10, weight: .medium))
-                        Text("v0.2.0")
+                        Text(AppVersion.displayString)
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }

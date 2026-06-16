@@ -11,7 +11,12 @@ struct BattleView: View {
                     StageHeaderView(progress: gameEngine.progress, battle: battle)
 
                     // 战斗场景 — 像素精灵
-                    BattleSceneView(battle: battle, progress: gameEngine.progress)
+                    BattleSceneView(
+                        battle: battle,
+                        progress: gameEngine.progress,
+                        latestLogEntry: gameEngine.recentBattleLog.last,
+                        logTrigger: gameEngine.recentBattleLog.last?.id
+                    )
                         .frame(height: BattleSceneMetrics.compactHeight)
 
                     if battle.isOver {
@@ -20,7 +25,10 @@ struct BattleView: View {
                         BattleOngoingStatusView(battle: battle)
                     }
 
-                    BattleLogPanel(entries: Array(battle.log.suffix(BattleLogMetrics.visibleEntryLimit)))
+                    BattleLogPanel(
+                        entries: Array(gameEngine.recentBattleLog.suffix(BattleLogMetrics.visibleEntryLimit)),
+                        totalCount: gameEngine.recentBattleLog.count
+                    )
                 }
                 .padding()
             } else {
@@ -1195,6 +1203,7 @@ enum BattleSceneLabels {
 enum BattleHeroSpriteMetrics {
     static let mainScale: CGFloat = 1.16
     static let supportScale: CGFloat = 0.76
+    static let enemyFacingXScale: CGFloat = -1
 
     static func mainSize(for heroClass: HeroClass) -> CGSize {
         GameArt.battleHeroDisplaySize(for: heroClass, scale: mainScale)
@@ -1210,16 +1219,26 @@ struct BattleSceneView: View {
     @ObservedObject var battle: Battle
     let progress: ProgressTracker
     let fixedBackdropTime: TimeInterval?
+    let latestLogEntry: BattleLogEntry?
+    let logTrigger: UUID?
     @State private var heroStrike = false
     @State private var supportStrike = false
     @State private var monsterStrike = false
     @State private var heroHit = false
     @State private var monsterHit = false
 
-    init(battle: Battle, progress: ProgressTracker, fixedBackdropTime: TimeInterval? = nil) {
+    init(
+        battle: Battle,
+        progress: ProgressTracker,
+        fixedBackdropTime: TimeInterval? = nil,
+        latestLogEntry: BattleLogEntry? = nil,
+        logTrigger: UUID? = nil
+    ) {
         self.battle = battle
         self.progress = progress
         self.fixedBackdropTime = fixedBackdropTime
+        self.latestLogEntry = latestLogEntry
+        self.logTrigger = logTrigger ?? battle.log.last?.id
     }
 
     var body: some View {
@@ -1233,7 +1252,7 @@ struct BattleSceneView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: BattleSceneMetrics.sceneCornerRadius))
-        .onChange(of: battle.log.count) { _ in
+        .onChange(of: logTrigger) { _ in
             playHitAnimation()
         }
     }
@@ -1284,7 +1303,7 @@ struct BattleSceneView: View {
                     .padding(.top, 42)
                     .zIndex(4)
 
-                if let cue = BattleIncomingCue.visible(for: battle.log.last) {
+                if let cue = BattleIncomingCue.visible(for: visualLogEntry) {
                     BattleIncomingCueView(cue: cue)
                         .frame(width: 54, height: 32, alignment: .center)
                         .padding(.leading, platformLeading + platformWidth * 0.27)
@@ -1292,8 +1311,8 @@ struct BattleSceneView: View {
                         .zIndex(6)
                 }
 
-                if let trajectory = BattleTrajectoryCue.visible(for: battle.log.last),
-                   let last = battle.log.last {
+                if let trajectory = BattleTrajectoryCue.visible(for: visualLogEntry),
+                   let last = visualLogEntry {
                     BattleTrajectoryCueView(
                         cue: trajectory,
                         tint: BattleTrajectoryCue.tint(for: last)
@@ -1304,7 +1323,7 @@ struct BattleSceneView: View {
                     .zIndex(5)
                 }
 
-                if let cue = BattleImpactCue.visible(for: battle.log.last) {
+                if let cue = BattleImpactCue.visible(for: visualLogEntry) {
                     BattleImpactCueView(cue: cue)
                         .frame(width: 48, height: 32, alignment: .center)
                         .padding(.leading, platformLeading + platformWidth * 0.55)
@@ -1312,7 +1331,7 @@ struct BattleSceneView: View {
                         .zIndex(6)
                 }
 
-                if let cue = BattleUtilityCue.visible(for: battle.log.last) {
+                if let cue = BattleUtilityCue.visible(for: visualLogEntry) {
                     BattleUtilityCueView(cue: cue)
                         .frame(width: 58, height: 38, alignment: .center)
                         .padding(.leading, platformLeading + platformWidth * 0.30)
@@ -1320,7 +1339,7 @@ struct BattleSceneView: View {
                         .zIndex(6)
                 }
 
-                if let last = battle.log.last {
+                if let last = visualLogEntry {
                     FloatingDamageText(entry: last)
                         .padding(.top, 18)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -1329,8 +1348,12 @@ struct BattleSceneView: View {
         }
     }
 
+    private var visualLogEntry: BattleLogEntry? {
+        latestLogEntry ?? battle.log.last
+    }
+
     private func playHitAnimation() {
-        guard let attacker = battle.log.last?.attacker else { return }
+        guard let attacker = visualLogEntry?.attacker else { return }
 
         withAnimation(.easeOut(duration: 0.10)) {
             heroStrike = attacker == .hero
@@ -3091,6 +3114,7 @@ struct PartyCombatantView: View {
                             imageName: GameArt.battleHeroSpriteName(for: state.member.heroClass),
                             size: BattleHeroSpriteMetrics.supportSize(for: state.member.heroClass)
                         )
+                        .scaleEffect(x: BattleHeroSpriteMetrics.enemyFacingXScale, y: 1, anchor: .center)
 
                         CompactHPBar(
                             hp: state.hp,
@@ -3115,6 +3139,7 @@ struct PartyCombatantView: View {
                     imageName: GameArt.battleHeroSpriteName(for: battle.primaryHeroClass),
                     size: BattleHeroSpriteMetrics.mainSize(for: battle.primaryHeroClass)
                 )
+                .scaleEffect(x: BattleHeroSpriteMetrics.enemyFacingXScale, y: 1, anchor: .center)
                 .scaleEffect(isHeroStriking ? 1.05 : 1.0, anchor: .bottom)
                 .offset(
                     x: mainHeroXOffset + (isHeroStriking ? 8 : 0) + battleIdleXOffset(time: animationTime, phase: 0.0, amplitude: 1),
@@ -3497,6 +3522,7 @@ struct BattleLogRow: View {
 
 private struct BattleLogPanel: View {
     let entries: [BattleLogEntry]
+    let totalCount: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -3507,7 +3533,7 @@ private struct BattleLogPanel: View {
                 Text("战斗日志")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                 Spacer()
-                Text("\(entries.count)")
+                Text("\(totalCount)")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundColor(.secondary)
             }
@@ -3524,14 +3550,23 @@ private struct BattleLogPanel: View {
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: BattleLogMetrics.rowSpacing) {
-                        ForEach(entries) { entry in
-                            BattleLogRow(entry: entry)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: BattleLogMetrics.rowSpacing) {
+                            ForEach(entries) { entry in
+                                BattleLogRow(entry: entry)
+                                    .id(entry.id)
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 1)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 1)
+                    .onAppear {
+                        scrollToLatestEntry(with: proxy, animated: false)
+                    }
+                    .onChange(of: entries.last?.id) { _ in
+                        scrollToLatestEntry(with: proxy, animated: true)
+                    }
                 }
             }
         }
@@ -3544,6 +3579,19 @@ private struct BattleLogPanel: View {
             RoundedRectangle(cornerRadius: 4)
                 .stroke(Color.primary.opacity(0.10), lineWidth: 0.6)
         )
+    }
+
+    private func scrollToLatestEntry(with proxy: ScrollViewProxy, animated: Bool) {
+        guard let latestEntryID = entries.last?.id else { return }
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(latestEntryID, anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo(latestEntryID, anchor: .bottom)
+            }
+        }
     }
 }
 

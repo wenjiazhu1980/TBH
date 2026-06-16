@@ -15,6 +15,7 @@ class GameEngine: ObservableObject {
     @Published var inventory: Inventory
     @Published var progress: ProgressTracker
     @Published var statistics: GameStatistics
+    @Published private(set) var recentBattleLog: [BattleLogEntry]
     @Published var autoEquipBestItems: Bool
     @Published var worseEquipmentHandling: WorseEquipmentHandling
     @Published var soundEffectsEnabled: Bool {
@@ -33,6 +34,7 @@ class GameEngine: ObservableObject {
     /// 每 30 个 tick（约 30 秒）自动保存一次
     private let autosaveTicks = 30
     private var ticksSinceLastSave = 0
+    private let retainedBattleLogLimit = 80
 
     init(saveManager: SaveManager = SaveManager(), audio: GameAudioPlaying = GameAudio.shared) {
         self.hero = Hero()
@@ -45,6 +47,7 @@ class GameEngine: ObservableObject {
         self.inventory = Inventory()
         self.progress = ProgressTracker()
         self.statistics = GameStatistics()
+        self.recentBattleLog = []
         self.autoEquipBestItems = false
         self.worseEquipmentHandling = .keep
         self.soundEffectsEnabled = true
@@ -109,7 +112,9 @@ class GameEngine: ObservableObject {
 
         guard hero.isAlive else { return }
 
+        let battleLogCountBeforeUpdate = currentBattle?.log.count ?? 0
         currentBattle?.update(deltaTime: tickInterval)
+        appendRecentBattleLog(from: currentBattle, startingAt: battleLogCountBeforeUpdate)
         statistics.totalPlayTime += tickInterval
 
         if let battle = currentBattle, battle.isOver {
@@ -167,6 +172,15 @@ class GameEngine: ObservableObject {
             self?.handleBattleEvent(event)
         }
         currentBattle = battle
+    }
+
+    private func appendRecentBattleLog(from battle: Battle?, startingAt startIndex: Int) {
+        guard let battle, battle.log.count > startIndex else { return }
+        recentBattleLog.append(contentsOf: battle.log[startIndex...])
+        let overflow = recentBattleLog.count - retainedBattleLogLimit
+        if overflow > 0 {
+            recentBattleLog.removeFirst(overflow)
+        }
     }
 
     private var currentStageRevivalKey: String {
@@ -665,6 +679,7 @@ class GameEngine: ObservableObject {
         inventory = Inventory()
         progress = ProgressTracker()
         statistics = GameStatistics()
+        recentBattleLog.removeAll()
         autoEquipBestItems = false
         worseEquipmentHandling = .keep
         soundEffectsEnabled = true

@@ -1046,7 +1046,7 @@ source_monster_attack_metadata = (
 source_monster_incoming_visual_audit = (
     "enum BattleIncomingCue" in battle_view_source
     and "BattleIncomingCueView" in battle_view_source
-    and "BattleIncomingCue.visible(for: battle.log.last)" in battle_view_source
+    and "BattleIncomingCue.visible(for: visualLogEntry)" in battle_view_source
     and "source monster attack elements expose distinct incoming cues" in self_test_source
     and "case monsterFireIncoming" in battle_scene_snapshot_source
     and "case monsterColdIncoming" in battle_scene_snapshot_source
