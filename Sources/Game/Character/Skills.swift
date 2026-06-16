@@ -376,8 +376,8 @@ enum PassiveSkillValueType: String, Codable, CaseIterable {
     case additive = "ADDITIVE"
 }
 
-/// Source-checked passive skill node catalog. This is data-only until unlock
-/// paths and runtime application semantics are verified against stronger source evidence.
+/// Source-checked passive skill node catalog. Unlock paths are still incomplete,
+/// but explicitly unlocked IDs can now feed the conservative runtime hooks below.
 struct PassiveSkill: Identifiable, Codable, Equatable {
     let id: String
     let name: String
@@ -548,6 +548,141 @@ enum PassiveSkills {
 601081	Physical Damage Enhancement	PhysicalDamagePercent	FLAT	150
 601082	Area of Effect Enhancement	AreaOfEffect	ADDITIVE	30
 """
+}
+
+struct PassiveSkillRuntimeEffects: Codable, Equatable {
+    var passiveMaxHp = 0
+    var passiveMaxHpMultiplier = 1.0
+    var passiveAttackDamage = 0
+    var passiveAttackDamageMultiplier = 1.0
+    var passiveArmor = 0
+    var passiveAttackSpeedMultiplier = 1.0
+    var passiveCriticalChance = 0.0
+    var passiveCriticalDamage = 0.0
+    var passiveHpRegenPerSec = 0.0
+    var passiveAddHpPerHit = 0
+    var passiveAddHpPerKill = 0
+    var passiveHpLeech = 0.0
+    var passiveDamageReduction = 0.0
+    var passiveDamageAbsorption = 0
+    var passiveAllElementalResistance = 0.0
+    var passiveBlockChance = 0.0
+    var passiveDodgeChance = 0.0
+    var passiveElementalDodgeChance = 0.0
+    var passiveMaxDodgeChance = 0.0
+    var passivePhysicalDamagePercent = 0.0
+    var passiveFireDamagePercent = 0.0
+    var passiveColdDamagePercent = 0.0
+    var passiveLightningDamagePercent = 0.0
+    var passiveIncreaseProjectileDamage = 0.0
+    var passiveIncreaseAreaOfEffectDamage = 0.0
+    var passiveSkillHealIncrease = 0.0
+    var passiveSkillDurationIncrease = 0.0
+    var passiveCooldownReduction = 0.0
+    var passiveCastSpeed = 0.0
+    var passiveSkillRangeExpansion = 0.0
+    var passiveAreaOfEffect = 0.0
+    var passiveMovementSpeed = 0
+    var passiveMovementSpeedMultiplier = 1.0
+
+    static let none = PassiveSkillRuntimeEffects()
+
+    static func make(unlockedSkillIDs: Set<String>, heroClass: HeroClass) -> PassiveSkillRuntimeEffects {
+        guard !unlockedSkillIDs.isEmpty else { return .none }
+
+        var effects = PassiveSkillRuntimeEffects()
+        for passiveSkill in PassiveSkills.skills(for: heroClass) where unlockedSkillIDs.contains(passiveSkill.id) {
+            effects.apply(passiveSkill)
+        }
+        return effects
+    }
+
+    private mutating func apply(_ passiveSkill: PassiveSkill) {
+        switch passiveSkill.stat {
+        case "MaxHp":
+            if passiveSkill.valueType == .additive {
+                passiveMaxHpMultiplier += percentMultiplierDelta(passiveSkill)
+            } else {
+                passiveMaxHp += max(0, passiveSkill.value)
+            }
+        case "AttackDamage":
+            if passiveSkill.valueType == .additive {
+                passiveAttackDamageMultiplier += percentMultiplierDelta(passiveSkill)
+            } else {
+                passiveAttackDamage += max(0, passiveSkill.value)
+            }
+        case "Armor":
+            passiveArmor += max(0, passiveSkill.value)
+        case "AttackSpeed":
+            passiveAttackSpeedMultiplier += percentMultiplierDelta(passiveSkill)
+        case "CriticalChance":
+            passiveCriticalChance += basisPointChance(passiveSkill)
+        case "CriticalDamage":
+            passiveCriticalDamage += percentMultiplierDelta(passiveSkill)
+        case "HpRegenPerSec":
+            passiveHpRegenPerSec += Double(max(0, passiveSkill.value))
+        case "AddHpPerHit":
+            passiveAddHpPerHit += max(0, passiveSkill.value)
+        case "AddHpPerKill":
+            passiveAddHpPerKill += max(0, passiveSkill.value)
+        case "HpLeech":
+            passiveHpLeech += percentMultiplierDelta(passiveSkill)
+        case "DamageReduction":
+            passiveDamageReduction += percentMultiplierDelta(passiveSkill)
+        case "DamageAbsorption":
+            passiveDamageAbsorption += max(0, passiveSkill.value)
+        case "AllElementalResistance":
+            passiveAllElementalResistance += percentMultiplierDelta(passiveSkill)
+        case "BlockChance":
+            passiveBlockChance += basisPointChance(passiveSkill)
+        case "DodgeChance":
+            passiveDodgeChance += basisPointChance(passiveSkill)
+        case "ElementalDodgeChance":
+            passiveElementalDodgeChance += basisPointChance(passiveSkill)
+        case "MaxDodgeChance":
+            passiveMaxDodgeChance += basisPointChance(passiveSkill)
+        case "PhysicalDamagePercent":
+            passivePhysicalDamagePercent += percentMultiplierDelta(passiveSkill)
+        case "FireDamagePercent":
+            passiveFireDamagePercent += percentMultiplierDelta(passiveSkill)
+        case "ColdDamagePercent":
+            passiveColdDamagePercent += percentMultiplierDelta(passiveSkill)
+        case "LightningDamagePercent":
+            passiveLightningDamagePercent += percentMultiplierDelta(passiveSkill)
+        case "IncreaseProjectileDamage":
+            passiveIncreaseProjectileDamage += percentMultiplierDelta(passiveSkill)
+        case "IncreaseAreaOfEffectDamage":
+            passiveIncreaseAreaOfEffectDamage += percentMultiplierDelta(passiveSkill)
+        case "SkillHealIncrease":
+            passiveSkillHealIncrease += percentMultiplierDelta(passiveSkill)
+        case "SkillDurationIncrease":
+            passiveSkillDurationIncrease += percentMultiplierDelta(passiveSkill)
+        case "CooldownReduction":
+            passiveCooldownReduction += percentMultiplierDelta(passiveSkill)
+        case "CastSpeed":
+            passiveCastSpeed += percentMultiplierDelta(passiveSkill)
+        case "SkillRangeExpansion":
+            passiveSkillRangeExpansion += percentMultiplierDelta(passiveSkill)
+        case "AreaOfEffect":
+            passiveAreaOfEffect += percentMultiplierDelta(passiveSkill)
+        case "MovementSpeed":
+            if passiveSkill.valueType == .additive {
+                passiveMovementSpeedMultiplier += percentMultiplierDelta(passiveSkill)
+            } else {
+                passiveMovementSpeed += max(0, passiveSkill.value)
+            }
+        default:
+            break
+        }
+    }
+
+    private func percentMultiplierDelta(_ passiveSkill: PassiveSkill) -> Double {
+        Double(max(0, passiveSkill.value)) / 100.0
+    }
+
+    private func basisPointChance(_ passiveSkill: PassiveSkill) -> Double {
+        Double(max(0, passiveSkill.value)) / 10_000.0
+    }
 }
 
 /// 原版命名主动技能的轻量数据基线。

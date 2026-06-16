@@ -13,6 +13,7 @@ struct Monster: Identifiable, Codable {
     let goldReward: Int
     let lootTableID: String
     let itemLevelCap: Int
+    let sourceSkillID: String?
 
     init(
         id: String,
@@ -25,7 +26,8 @@ struct Monster: Identifiable, Codable {
         xpReward: Int,
         goldReward: Int,
         lootTableID: String,
-        itemLevelCap: Int = 1
+        itemLevelCap: Int = 1,
+        sourceSkillID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -38,6 +40,19 @@ struct Monster: Identifiable, Codable {
         self.goldReward = goldReward
         self.lootTableID = lootTableID
         self.itemLevelCap = max(1, itemLevelCap)
+        self.sourceSkillID = sourceSkillID
+    }
+
+    var sourceSkill: SourceSkill? {
+        sourceSkillID.flatMap(SourceSkillCatalog.skill(id:))
+    }
+
+    var sourceDamageElement: SkillDamageElement {
+        sourceSkill?.runtimeDamageElement ?? .none
+    }
+
+    var sourceDelivery: SkillDelivery {
+        sourceSkill?.runtimeDelivery ?? .none
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -52,6 +67,7 @@ struct Monster: Identifiable, Codable {
         case goldReward
         case lootTableID
         case itemLevelCap
+        case sourceSkillID
     }
 
     init(from decoder: Decoder) throws {
@@ -67,7 +83,8 @@ struct Monster: Identifiable, Codable {
             xpReward: try container.decode(Int.self, forKey: .xpReward),
             goldReward: try container.decode(Int.self, forKey: .goldReward),
             lootTableID: try container.decode(String.self, forKey: .lootTableID),
-            itemLevelCap: try container.decodeIfPresent(Int.self, forKey: .itemLevelCap) ?? 1
+            itemLevelCap: try container.decodeIfPresent(Int.self, forKey: .itemLevelCap) ?? 1,
+            sourceSkillID: try container.decodeIfPresent(String.self, forKey: .sourceSkillID)
         )
     }
 

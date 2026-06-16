@@ -93,6 +93,11 @@ import Foundation
         #expect(SourceItemCatalog.byType[.sword]?.progressions.last == SourceGearLevelProgression(id: "300020", itemLevel: 100, name: "Radiant Sword"))
         #expect(SourceItemCatalog.progression(for: .scepter, itemLevel: 12) == SourceGearLevelProgression(id: "330003", itemLevel: 10, name: "Blessed Scepter"))
         #expect(SourceItemCatalog.progression(for: .amulet, itemLevel: 100) == SourceGearLevelProgression(id: "601191", itemLevel: 90, name: "Abyss Amulet"))
+        let sourceGearIconNames = SourceItemCatalog.allGearTypes.flatMap { $0.progressions.map(\.iconName) }
+        #expect(sourceGearIconNames.count == SourceItemCatalog.expectedGearLevelProgressionCount)
+        #expect(sourceGearIconNames.allSatisfy { $0.hasPrefix("source_gear_") })
+        #expect(SourceItemCatalog.progression(for: .scepter, itemLevel: 12)?.iconName == "source_gear_330003")
+        #expect(SourceItemCatalog.progression(for: .amulet, itemLevel: 100)?.iconName == "source_gear_601191")
         #expect(SourceItemCatalog.byType[.amulet]?.gearEntryCount == 272)
         #expect(SourceItemCatalog.byType[.amulet]?.rarityCount(for: .common) == 0)
         #expect(SourceItemCatalog.byType[.earring]?.sourceTitle == "Earing")
@@ -213,7 +218,7 @@ import Foundation
 
             #expect(item.equipmentType == expectedType)
             #expect(item.slot == expectedSlot)
-            #expect(GameArt.itemIconName(for: item) == GameArt.itemIconName(for: expectedType))
+            #expect(GameArt.itemIconName(for: item) == SourceItemCatalog.progression(for: expectedType, itemLevel: 1)?.iconName)
         }
     }
 
@@ -229,7 +234,7 @@ import Foundation
         )
 
         #expect(item.equipmentType == .sword)
-        #expect(GameArt.itemIconName(for: item) == GameArt.itemIconName(for: EquipmentType.sword))
+        #expect(GameArt.itemIconName(for: item) == SourceItemCatalog.progression(for: .sword, itemLevel: 1)?.iconName)
     }
 
     @Test func equipItem() {
@@ -276,6 +281,6 @@ import Foundation
         #expect(item.name == "Blessed Scepter")
         #expect(item.description.contains("Scepter"))
         #expect(item.description.contains("来源装备 330003"))
-        #expect(GameArt.itemIconName(for: item) == GameArt.itemIconName(for: EquipmentType.scepter))
+        #expect(GameArt.itemIconName(for: item) == "source_gear_330003")
     }
 }

@@ -137,6 +137,34 @@ import Testing
         #expect(finalBossSources == ["Normal Monster Box Lv90 #910901", "Act Boss Box Lv90 #930901"])
     }
 
+    @Test func chestStorageLimitsKeepNewestBoxAndRespectCapacityRunes() {
+        var limitedChests = ChestInventory()
+        limitedChests.add(
+            LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster),
+            limits: .base
+        )
+        limitedChests.add(
+            LootChest(kind: .normal, itemLevel: 2, sourceStageCode: "1-2", sourceDifficulty: .normal, family: .normalMonster),
+            limits: .base
+        )
+
+        #expect(limitedChests.totalCount == 1)
+        #expect(limitedChests.chests.first?.sourceStageCode == "1-2")
+
+        var expandedChests = ChestInventory()
+        let expandedLimits = RuneTree(unlockedNodes: [.maxNormalChestStorage]).chestStorageLimits
+        expandedChests.add(
+            LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster),
+            limits: expandedLimits
+        )
+        expandedChests.add(
+            LootChest(kind: .normal, itemLevel: 2, sourceStageCode: "1-2", sourceDifficulty: .normal, family: .normalMonster),
+            limits: expandedLimits
+        )
+
+        #expect(expandedChests.totalCount == 2)
+    }
+
     @Test func soulStoneMetadataMatchesItemDatabase() {
         #expect(SoulStoneKind.allCases.map(\.materialID) == [190_001, 190_002, 190_003, 190_004])
         #expect(SoulStoneKind.allCases.map(\.rarity) == [.immortal, .arcana, .beyond, .celestial])
@@ -186,7 +214,7 @@ import Testing
         #expect(tracker.chaptersCleared.isEmpty, "Cleared chapters reset for new difficulty")
     }
 
-    @Test func progressCapsAtMaxDifficulty() {
+    @Test func finalClearOpensCompletionSettlement() {
         var tracker = ProgressTracker()
         // 推进到远超全部内容的通关数
         for _ in 0..<(StageDefinition.all.count * Difficulty.allCases.count * 2) {
@@ -195,6 +223,38 @@ import Testing
         #expect(tracker.currentDifficulty == .torment, "Should cap at torment difficulty")
         #expect(tracker.currentChapter == .volcano, "Should cap at final act")
         #expect(tracker.currentStage.displayCode == "3-10", "Should cap at final stage")
+        #expect(tracker.isAwaitingNewGamePlus, "Final clear should open the completion settlement")
+        #expect(tracker.completedPlaythroughs == 1)
+        #expect(tracker.playthrough == 1)
+        #expect(tracker.stageProgressText == "1/1")
+
+        let killsBeforeExtraAdvance = tracker.killsInChapter
+        #expect(!tracker.advance(), "Completion settlement should block automatic progress")
+        #expect(tracker.killsInChapter == killsBeforeExtraAdvance)
+    }
+
+    @Test func startingNextPlaythroughResetsCampaignAndScalesMonsters() {
+        var tracker = ProgressTracker()
+        for _ in 0..<(StageDefinition.all.count * Difficulty.allCases.count) {
+            clearCurrentStage(&tracker)
+        }
+
+        #expect(tracker.isAwaitingNewGamePlus)
+        #expect(tracker.startNextPlaythrough())
+        #expect(tracker.playthrough == 2)
+        #expect(tracker.completedPlaythroughs == 1)
+        #expect(!tracker.isAwaitingNewGamePlus)
+        #expect(tracker.currentDifficulty == .normal)
+        #expect(tracker.currentStage.displayCode == "1-1")
+        #expect(tracker.highestUnlockedStage.displayCode == "1-1")
+        #expect(tracker.stageProgressText == "0/10")
+
+        let firstPlaythroughMonster = StageDefinition.stage(act: .forest, number: 1).spawnMonster(difficulty: .normal)
+        let secondPlaythroughMonster = StageDefinition.stage(act: .forest, number: 1).spawnMonster(difficulty: .normal, playthrough: tracker.playthrough)
+        #expect(secondPlaythroughMonster.hp > firstPlaythroughMonster.hp)
+        #expect(secondPlaythroughMonster.goldReward > firstPlaythroughMonster.goldReward)
+        #expect(NewGamePlusTuning.enemyStatMultiplier(for: tracker.playthrough) > 1.0)
+        #expect(NewGamePlusTuning.rewardMultiplier(for: tracker.playthrough) > 1.0)
     }
 
     @Test func decodesLegacySaveWithoutKillCounter() throws {

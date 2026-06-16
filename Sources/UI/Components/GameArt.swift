@@ -135,7 +135,10 @@ enum GameArt {
 
     static func itemIconName(for item: Item) -> String {
         if let equipmentType = item.equipmentType {
-            return itemIconName(for: equipmentType)
+            return SourceItemCatalog.progression(
+                for: equipmentType,
+                itemLevel: item.itemLevel
+            )?.iconName ?? itemIconName(for: equipmentType)
         }
 
         switch item.rarity {
@@ -364,37 +367,24 @@ enum GameArt {
     }
 
     static func runeTreeIconName(for node: RuneTreeNode) -> String {
-        switch node {
-        case .partySlot2, .partySlot3:
-            return "rune_party_slot"
-        case .activeSkillSlot2:
-            return "rune_active_skill_slot"
-        case .inventoryExpansion1:
-            return "rune_inventory_capacity"
-        case .openOneChestType:
-            return "rune_open_one_chest_type"
-        case .openAllChestTypes:
-            return "rune_open_all_chest_types"
-        case .offlineRewards:
-            return "rune_offline_rewards"
-        case .offlineGoldBoost:
-            return "rune_offline_gold"
-        case .offlineXPBoost:
-            return "rune_offline_xp"
+        guard let sourceNode = SourceRuneCatalog.byID[node.sourceRuneID] else {
+            return "source_rune_UnlockArrangeSlotCount"
         }
+        return sourceRuneIconName(for: sourceNode)
+    }
+
+    static func sourceRuneIconName(for sourceNode: SourceRuneNode) -> String {
+        sourceRuneIconName(forIconFamily: sourceNode.iconName)
+    }
+
+    static func sourceRuneIconName(forIconFamily iconName: String) -> String {
+        "source_rune_\(iconName)"
     }
 
     static var runeTreeIconNames: [String] {
-        [
-            "rune_party_slot",
-            "rune_active_skill_slot",
-            "rune_inventory_capacity",
-            "rune_open_one_chest_type",
-            "rune_open_all_chest_types",
-            "rune_offline_rewards",
-            "rune_offline_gold",
-            "rune_offline_xp"
-        ]
+        SourceRuneCatalog.iconNames
+            .sorted()
+            .map { sourceRuneIconName(forIconFamily: $0) }
     }
 
     private static func elementalSkillIconName(

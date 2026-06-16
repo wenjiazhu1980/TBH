@@ -7,6 +7,12 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
     case inventoryExpansion1
     case openOneChestType
     case openAllChestTypes
+    case autoOpenNormalChests
+    case autoOpenStageBossChests
+    case autoOpenActBossChests
+    case maxNormalChestStorage
+    case maxStageBossChestStorage
+    case maxActBossChestStorage
     case offlineRewards
     case offlineGoldBoost
     case offlineXPBoost
@@ -21,6 +27,12 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         case .inventoryExpansion1: return "22"
         case .openOneChestType: return "1021"
         case .openAllChestTypes: return "1055"
+        case .autoOpenNormalChests: return "13002"
+        case .autoOpenStageBossChests: return "15001"
+        case .autoOpenActBossChests: return "1902001"
+        case .maxNormalChestStorage: return "1031"
+        case .maxStageBossChestStorage: return "1071"
+        case .maxActBossChestStorage: return "1056"
         case .offlineRewards: return "11001"
         case .offlineGoldBoost: return "110011"
         case .offlineXPBoost: return "110012"
@@ -35,6 +47,12 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         case .inventoryExpansion1: return "扩张符文：背包容量 +10"
         case .openOneChestType: return "开启符文：同类箱子全部开启"
         case .openAllChestTypes: return "开启符文：全部箱子一键开启"
+        case .autoOpenNormalChests: return "发条符文：自动开启普通箱子"
+        case .autoOpenStageBossChests: return "发条符文：自动开启关卡 Boss 箱"
+        case .autoOpenActBossChests: return "发条符文：自动开启 Act Boss 箱"
+        case .maxNormalChestStorage: return "收纳符文：普通箱子上限 +1"
+        case .maxStageBossChestStorage: return "金库符文：关卡 Boss 箱上限 +1"
+        case .maxActBossChestStorage: return "无限符文：Act Boss 箱上限 +1"
         case .offlineRewards: return "安息符文：离线奖励"
         case .offlineGoldBoost: return "储藏符文：离线金币 +10%"
         case .offlineXPBoost: return "训练符文：离线经验 +10%"
@@ -45,7 +63,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .partySlot2: return 50_000
         case .partySlot3: return 150_000
-        case .activeSkillSlot2, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .offlineRewards, .offlineGoldBoost, .offlineXPBoost: return 0
+        case .activeSkillSlot2, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .autoOpenNormalChests, .autoOpenStageBossChests, .autoOpenActBossChests, .maxNormalChestStorage, .maxStageBossChestStorage, .maxActBossChestStorage, .offlineRewards, .offlineGoldBoost, .offlineXPBoost: return 0
         }
     }
 
@@ -53,7 +71,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .partySlot2, .partySlot3:
             return true
-        case .activeSkillSlot2, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
+        case .activeSkillSlot2, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .autoOpenNormalChests, .autoOpenStageBossChests, .autoOpenActBossChests, .maxNormalChestStorage, .maxStageBossChestStorage, .maxActBossChestStorage, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
             return false
         }
     }
@@ -62,7 +80,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .activeSkillSlot2:
             return 50_000
-        case .partySlot2, .partySlot3, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
+        case .partySlot2, .partySlot3, .inventoryExpansion1, .openOneChestType, .openAllChestTypes, .autoOpenNormalChests, .autoOpenStageBossChests, .autoOpenActBossChests, .maxNormalChestStorage, .maxStageBossChestStorage, .maxActBossChestStorage, .offlineRewards, .offlineGoldBoost, .offlineXPBoost:
             return nil
         }
     }
@@ -79,7 +97,7 @@ enum RuneTreeNode: String, CaseIterable, Codable, Identifiable {
 
     var requiredNode: RuneTreeNode? {
         switch self {
-        case .partySlot2, .activeSkillSlot2, .openOneChestType, .offlineRewards: return nil
+        case .partySlot2, .activeSkillSlot2, .openOneChestType, .autoOpenNormalChests, .autoOpenStageBossChests, .autoOpenActBossChests, .maxNormalChestStorage, .maxStageBossChestStorage, .maxActBossChestStorage, .offlineRewards: return nil
         case .partySlot3, .inventoryExpansion1: return .partySlot2
         case .openAllChestTypes: return .openOneChestType
         case .offlineGoldBoost, .offlineXPBoost: return .offlineRewards
@@ -208,6 +226,34 @@ enum SourceRuneCatalog {
         all.reduce(into: [:]) { distribution, node in
             distribution[node.iconName, default: 0] += 1
         }
+    }
+
+    static var runtimeModeledSourceIDs: Set<String> {
+        Set(RuneTreeNode.allCases.map(\.sourceRuneID))
+    }
+
+    static var runtimeModeledNodes: [SourceRuneNode] {
+        all.filter { runtimeModeledSourceIDs.contains($0.id) }
+    }
+
+    static var runtimeUnmodeledNodes: [SourceRuneNode] {
+        all.filter { !runtimeModeledSourceIDs.contains($0.id) }
+    }
+
+    static var runtimeModeledIconNames: Set<String> {
+        Set(runtimeModeledNodes.map(\.iconName))
+    }
+
+    static var runtimeUnmodeledIconNames: Set<String> {
+        Set(runtimeUnmodeledNodes.map(\.iconName))
+    }
+
+    static var runtimeUnmodeledOnlyIconNames: Set<String> {
+        iconNames.subtracting(runtimeModeledIconNames)
+    }
+
+    static var runtimeSharedModeledAndUnmodeledIconNames: Set<String> {
+        runtimeModeledIconNames.intersection(runtimeUnmodeledIconNames)
     }
 
     static var danglingNextIDs: [String] {
@@ -466,6 +512,7 @@ enum SourceRuneCatalog {
 struct RuneTree: Codable, Equatable {
     static let requiredHeroLevel = 3
     static let inventoryExpansionSlotBonus = 10
+    static let chestStorageCapacityBonus = 1
 
     /// Kept for old-save compatibility; the currently verified formation runes spend gold.
     var points: Int
@@ -505,6 +552,26 @@ struct RuneTree: Codable, Equatable {
 
     var canOpenAllChestTypesAtOnce: Bool {
         isUnlocked(.openAllChestTypes)
+    }
+
+    var canAutoOpenNormalChests: Bool {
+        isUnlocked(.autoOpenNormalChests)
+    }
+
+    var canAutoOpenStageBossChests: Bool {
+        isUnlocked(.autoOpenStageBossChests)
+    }
+
+    var canAutoOpenActBossChests: Bool {
+        isUnlocked(.autoOpenActBossChests)
+    }
+
+    var chestStorageLimits: ChestStorageLimits {
+        ChestStorageLimits(
+            normalMonster: ChestStorageLimits.base.normalMonster + (isUnlocked(.maxNormalChestStorage) ? Self.chestStorageCapacityBonus : 0),
+            stageBoss: ChestStorageLimits.base.stageBoss + (isUnlocked(.maxStageBossChestStorage) ? Self.chestStorageCapacityBonus : 0),
+            actBoss: ChestStorageLimits.base.actBoss + (isUnlocked(.maxActBossChestStorage) ? Self.chestStorageCapacityBonus : 0)
+        )
     }
 
     var offlineRewardsUnlocked: Bool {

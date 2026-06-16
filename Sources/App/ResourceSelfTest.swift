@@ -7,6 +7,16 @@ import Foundation
 enum ResourceSelfTest {
     private static let requiredStaticSprites = [
         "app_icon",
+        "campfire",
+        "logo_tbh",
+        "achievement_1",
+        "achievement_2",
+        "achievement_3",
+        "achievement_4",
+        "taskbar_hero_1",
+        "taskbar_hero_2",
+        "taskbar_hero_3",
+        "taskbar_hero_4",
         "official_monster_slime",
         "monster_slime_red",
         "monster_skeleton_boss",
@@ -54,6 +64,9 @@ enum ResourceSelfTest {
                 EquipmentType.allCases.map {
                     GameArt.itemIconName(for: $0)
                 } +
+                SourceItemCatalog.allGearTypes.flatMap {
+                    $0.progressions.map(\.iconName)
+                } +
                 SourceItemCatalog.allMaterials.map {
                     GameArt.itemIconName(for: $0)
                 } +
@@ -69,6 +82,18 @@ enum ResourceSelfTest {
     private struct SpriteIssue {
         let name: String
         let message: String
+    }
+
+    private struct SourceGearManifestRow {
+        let iconName: String
+        let slug: String
+        let type: String
+        let itemLevel: String
+        let sourceID: String
+        let name: String
+        let sourceURL: String
+        let sha256: String
+        let bytes: String
     }
 
     private struct SpritePixel: Equatable {
@@ -92,6 +117,35 @@ enum ResourceSelfTest {
     private struct SFXLevelMetrics {
         let rmsDBFS: Double
         let peakDBFS: Double
+    }
+
+    private struct SFXProfileMetrics {
+        let duration: Double
+        let rmsDBFS: Double
+        let peakDBFS: Double
+    }
+
+    private struct SFXManifestRow {
+        let resourceName: String
+        let event: String
+        let provenance: String
+        let officialAudio: String
+        let sampleRate: String
+        let channels: String
+        let bitDepth: String
+        let durationSeconds: String
+        let sha256: String
+        let bytes: String
+        let note: String
+    }
+
+    private struct BrandArtMetrics {
+        let width: Int
+        let height: Int
+        let opaquePixels: Int
+        let distinctColors: Int
+        let saturatedPixels: Int
+        let darkPixels: Int
     }
 
     private enum WAVLevelError: LocalizedError {
@@ -130,6 +184,7 @@ enum ResourceSelfTest {
         .battleLost: 0.36...0.55,
         .levelUp: 0.36...0.55,
         .itemEquipped: 0.28...0.44,
+        .itemConsumed: 0.28...0.44,
         .preview: 0.28...0.44
     ]
     private static let sfxMinimumIntervalProfiles: [GameAudioEvent: ClosedRange<TimeInterval>] = [
@@ -142,6 +197,7 @@ enum ResourceSelfTest {
         .battleLost: 0.40...0.80,
         .levelUp: 0.40...0.80,
         .itemEquipped: 0.18...0.35,
+        .itemConsumed: 0.18...0.35,
         .preview: 0.18...0.35
     ]
     private static let battleHeroOpaquePixelRatioRange: ClosedRange<Double> = 0.15...0.75
@@ -155,7 +211,8 @@ enum ResourceSelfTest {
         print("=== TBH Resource Self Test ===")
 
         let missing = requiredSprites.filter { NSImage.loadExtracted(named: $0) == nil }
-        var spriteIssues = validateHeroSpriteMappings()
+        var spriteIssues = validateAppIconAndBrandArt()
+        spriteIssues += validateHeroSpriteMappings()
         spriteIssues += validateStageMonsterSpriteMappings()
         spriteIssues += validateItemSpriteMappings()
         spriteIssues += validateSkillIconMappings()
@@ -165,6 +222,8 @@ enum ResourceSelfTest {
         sfxIssues += validateSFXBattleEventRoutes()
         sfxIssues += validateSFXVolumes()
         sfxIssues += validateSFXMinimumIntervals()
+        sfxIssues += validateSFXPayloadProfiles()
+        sfxIssues += validateSFXManifestPayloads()
         sfxIssues += requiredSFX.compactMap {
             validateSFX(named: $0)
         }
@@ -283,6 +342,213 @@ enum ResourceSelfTest {
         }
 
         return issues
+    }
+
+    private static func validateAppIconAndBrandArt() -> [SpriteIssue] {
+        var issues: [SpriteIssue] = []
+
+        if GameArt.appIconName != "app_icon" {
+            issues.append(
+                SpriteIssue(
+                    name: "GameArt.appIconName",
+                    message: "app icon mapping must point to app_icon"
+                )
+            )
+        }
+
+        if MenuBarIcon.nativeIconSide != 14 {
+            issues.append(
+                SpriteIssue(
+                    name: "MenuBarIcon.nativeIconSide",
+                    message: "menu-bar icon side must stay 14pt to avoid oversized status-item icons, got \(MenuBarIcon.nativeIconSide)"
+                )
+            )
+        }
+
+        if MenuBarIcon.nativeLabelHeight != 18 {
+            issues.append(
+                SpriteIssue(
+                    name: "MenuBarIcon.nativeLabelHeight",
+                    message: "menu-bar label height must stay 18pt to avoid status-item black-bar regressions, got \(MenuBarIcon.nativeLabelHeight)"
+                )
+            )
+        }
+
+        let expectedBrandArt: [(name: String, width: Int, height: Int, minColors: Int, minSaturated: Int)] = [
+            ("app_icon", 180, 180, 12, 3_000),
+            ("logo_tbh", 184, 86, 1_000, 1_000),
+            ("campfire", 160, 180, 1_000, 3_000),
+            ("achievement_1", 64, 64, 100, 1_000),
+            ("achievement_2", 64, 64, 100, 1_000),
+            ("achievement_3", 64, 64, 100, 1_000),
+            ("achievement_4", 64, 64, 100, 1_000),
+            ("taskbar_hero_1", 32, 32, 20, 0),
+            ("taskbar_hero_2", 32, 32, 20, 0),
+            ("taskbar_hero_3", 32, 32, 20, 0),
+            ("taskbar_hero_4", 32, 32, 20, 0)
+        ]
+
+        for art in expectedBrandArt {
+            guard let metrics = brandArtMetrics(named: art.name) else {
+                issues.append(SpriteIssue(name: art.name, message: "brand art could not be decoded"))
+                continue
+            }
+
+            if metrics.width != art.width || metrics.height != art.height {
+                issues.append(
+                    SpriteIssue(
+                        name: art.name,
+                        message: "brand art must be \(art.width)x\(art.height), got \(metrics.width)x\(metrics.height)"
+                    )
+                )
+            }
+
+            if metrics.opaquePixels != art.width * art.height {
+                issues.append(
+                    SpriteIssue(
+                        name: art.name,
+                        message: "brand art must remain fully opaque, got opaque pixels \(metrics.opaquePixels)"
+                    )
+                )
+            }
+
+            if metrics.distinctColors < art.minColors {
+                issues.append(
+                    SpriteIssue(
+                        name: art.name,
+                        message: "brand art lost too much color detail: \(metrics.distinctColors) colors"
+                    )
+                )
+            }
+
+            if metrics.saturatedPixels < art.minSaturated {
+                issues.append(
+                    SpriteIssue(
+                        name: art.name,
+                        message: "brand art lost saturated pixel-art signal: \(metrics.saturatedPixels) pixels"
+                    )
+                )
+            }
+
+            if art.name == "app_icon" {
+                let totalPixels = max(1, metrics.width * metrics.height)
+                let darkRatio = Double(metrics.darkPixels) / Double(totalPixels)
+                if !(0.45...0.85).contains(darkRatio) {
+                    issues.append(
+                        SpriteIssue(
+                            name: art.name,
+                            message: "app icon lost the expected dark menu-bar-safe backing ratio"
+                        )
+                    )
+                }
+            }
+        }
+
+        if let icnsIssue = validateAppIconICNS() {
+            issues.append(icnsIssue)
+        }
+
+        return issues
+    }
+
+    private static func brandArtMetrics(named spriteName: String) -> BrandArtMetrics? {
+        guard let url = Bundle.module.url(
+            forResource: spriteName,
+            withExtension: "png",
+            subdirectory: "Extracted"
+        ),
+              let data = try? Data(contentsOf: url),
+              let bitmap = NSBitmapImageRep(data: data) else {
+            return nil
+        }
+
+        var opaquePixels = 0
+        var saturatedPixels = 0
+        var darkPixels = 0
+        var distinctColors = Set<Int>()
+
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y),
+                      color.alphaComponent > 0.10 else { continue }
+
+                opaquePixels += 1
+                let red = Int((color.redComponent * 255).rounded())
+                let green = Int((color.greenComponent * 255).rounded())
+                let blue = Int((color.blueComponent * 255).rounded())
+                distinctColors.insert((red << 16) | (green << 8) | blue)
+
+                let brightest = max(red, green, blue)
+                let darkest = min(red, green, blue)
+                if brightest - darkest >= 48, brightest >= 80 {
+                    saturatedPixels += 1
+                }
+                if red <= 40, green <= 45, blue <= 55 {
+                    darkPixels += 1
+                }
+            }
+        }
+
+        return BrandArtMetrics(
+            width: bitmap.pixelsWide,
+            height: bitmap.pixelsHigh,
+            opaquePixels: opaquePixels,
+            distinctColors: distinctColors.count,
+            saturatedPixels: saturatedPixels,
+            darkPixels: darkPixels
+        )
+    }
+
+    private static func validateAppIconICNS() -> SpriteIssue? {
+        guard let url = Bundle.module.url(
+            forResource: "TBH",
+            withExtension: "icns",
+            subdirectory: "Extracted"
+        ) else {
+            return SpriteIssue(name: "TBH.icns", message: "missing app icon ICNS resource")
+        }
+
+        guard let data = try? Data(contentsOf: url), data.count >= 8 else {
+            return SpriteIssue(name: "TBH.icns", message: "app icon ICNS could not be read")
+        }
+
+        guard asciiString(in: data, at: 0, count: 4) == "icns" else {
+            return SpriteIssue(name: "TBH.icns", message: "app icon ICNS must start with an icns header")
+        }
+
+        let declaredSize = Int(bigEndianUInt32(in: data, at: 4))
+        guard declaredSize == data.count else {
+            return SpriteIssue(
+                name: "TBH.icns",
+                message: "app icon ICNS declared size mismatch: declared \(declaredSize), actual \(data.count)"
+            )
+        }
+
+        var chunks = Set<String>()
+        var offset = 8
+        while offset + 8 <= data.count {
+            let chunkType = asciiString(in: data, at: offset, count: 4)
+            let chunkSize = Int(bigEndianUInt32(in: data, at: offset + 4))
+            guard chunkSize >= 8, offset + chunkSize <= data.count else {
+                return SpriteIssue(
+                    name: "TBH.icns",
+                    message: "app icon ICNS has invalid chunk \(chunkType) size \(chunkSize)"
+                )
+            }
+            chunks.insert(chunkType)
+            offset += chunkSize
+        }
+
+        let requiredChunks: Set<String> = ["icp4", "icp5", "icp6", "ic07", "ic08", "ic09", "ic10"]
+        let missingChunks = requiredChunks.subtracting(chunks).sorted()
+        guard missingChunks.isEmpty else {
+            return SpriteIssue(
+                name: "TBH.icns",
+                message: "app icon ICNS is missing chunks: \(missingChunks.joined(separator: ","))"
+            )
+        }
+
+        return nil
     }
 
     private static func expectedBattleHeroSpriteName(for heroClass: HeroClass) -> String {
@@ -943,7 +1209,7 @@ enum ResourceSelfTest {
             issues.append(
                 SpriteIssue(
                     name: "EquipmentType",
-                    message: "each equipment type must keep its own clean icon instead of falling back to shared slot art"
+                    message: "each equipment type must keep its own source-backed gear icon instead of falling back to shared slot art"
                 )
             )
         }
@@ -953,7 +1219,7 @@ enum ResourceSelfTest {
                 issues.append(
                     SpriteIssue(
                         name: equipmentType.rawValue,
-                        message: "equipment type icon must use clean item type art, got \(iconName)"
+                        message: "equipment type icon must use pinned item_* source gear art, got \(iconName)"
                     )
                 )
                 continue
@@ -961,6 +1227,45 @@ enum ResourceSelfTest {
 
             if let dimensionIssue = validateItemGridSprite(named: iconName, equipmentType: equipmentType) {
                 issues.append(dimensionIssue)
+            }
+        }
+
+        issues += validateEquipmentFallbackIconsMatchSourceGear()
+        issues += validateSourceGearManifestPayloads()
+
+        for gearType in SourceItemCatalog.allGearTypes {
+            for progression in gearType.progressions {
+                if let issue = validateSourceItemSprite(
+                    named: progression.iconName,
+                    context: "\(gearType.sourceTitle) \(progression.id)",
+                    expectedWidth: 16,
+                    expectedHeight: 16,
+                    label: "source gear progression"
+                ) {
+                    issues.append(issue)
+                }
+            }
+        }
+
+        let officialFallbackSprites: [(name: String, width: Int, height: Int)] = [
+            ("official_item_weapon", 16, 16),
+            ("official_item_armor", 16, 16),
+            ("official_item_helmet", 16, 16),
+            ("official_item_boots", 16, 16),
+            ("official_item_accessory", 16, 16),
+            ("official_item_material", 16, 16),
+            ("official_item_gem", 16, 16),
+            ("official_item_box", 32, 32)
+        ]
+        for fallback in officialFallbackSprites {
+            if let issue = validateCleanItemLikeSprite(
+                named: fallback.name,
+                context: fallback.name,
+                expectedWidth: fallback.width,
+                expectedHeight: fallback.height,
+                label: "official item fallback"
+            ) {
+                issues.append(issue)
             }
         }
 
@@ -1002,7 +1307,7 @@ enum ResourceSelfTest {
                 continue
             }
 
-            if let dimensionIssue = validateSourceItemSprite(
+            if let dimensionIssue = validateCleanItemLikeSprite(
                 named: iconName,
                 context: sourceIconID,
                 expectedWidth: 64,
@@ -1014,6 +1319,350 @@ enum ResourceSelfTest {
         }
 
         return issues
+    }
+
+    private static func validateEquipmentFallbackIconsMatchSourceGear() -> [SpriteIssue] {
+        var issues: [SpriteIssue] = []
+
+        for equipmentType in EquipmentType.allCases {
+            let fallbackIconName = GameArt.itemIconName(for: equipmentType)
+            guard let sourceIconName = SourceItemCatalog.progression(
+                for: equipmentType,
+                itemLevel: 1
+            )?.iconName else {
+                issues.append(
+                    SpriteIssue(
+                        name: equipmentType.rawValue,
+                        message: "equipment type has no checked source gear progression for fallback comparison"
+                    )
+                )
+                continue
+            }
+
+            guard let fallbackData = resourceData(named: fallbackIconName, withExtension: "png", subdirectory: "Extracted") else {
+                issues.append(
+                    SpriteIssue(
+                        name: equipmentType.rawValue,
+                        message: "fallback icon \(fallbackIconName).png is missing"
+                    )
+                )
+                continue
+            }
+
+            guard let sourceData = resourceData(named: sourceIconName, withExtension: "png", subdirectory: "Extracted") else {
+                issues.append(
+                    SpriteIssue(
+                        name: equipmentType.rawValue,
+                        message: "source progression icon \(sourceIconName).png is missing"
+                    )
+                )
+                continue
+            }
+
+            if fallbackData != sourceData {
+                issues.append(
+                    SpriteIssue(
+                        name: equipmentType.rawValue,
+                        message: "fallback icon \(fallbackIconName).png must be byte-identical to checked source gear icon \(sourceIconName).png; do not redraw equipment icons"
+                    )
+                )
+            }
+        }
+
+        return issues
+    }
+
+    private static func validateSourceGearManifestPayloads() -> [SpriteIssue] {
+        var issues: [SpriteIssue] = []
+        let expectedHeader = [
+            "iconName",
+            "slug",
+            "type",
+            "itemLevel",
+            "sourceID",
+            "name",
+            "sourceURL",
+            "sha256",
+            "bytes"
+        ]
+
+        guard let manifestData = resourceData(
+            named: "source_gear_icons",
+            withExtension: "tsv",
+            subdirectory: "Extracted"
+        ) else {
+            return [
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "source gear provenance manifest is missing; equipment icons must stay source-backed, not redrawn"
+                )
+            ]
+        }
+
+        guard let manifestText = String(data: manifestData, encoding: .utf8) else {
+            return [
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "source gear provenance manifest is not valid UTF-8"
+                )
+            ]
+        }
+
+        var lines = manifestText
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+        guard !lines.isEmpty else {
+            return [
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "source gear provenance manifest is empty"
+                )
+            ]
+        }
+
+        let header = lines.removeFirst().split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        if header != expectedHeader {
+            issues.append(
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "source gear manifest header mismatch: \(header.joined(separator: ","))"
+                )
+            )
+        }
+
+        let expectedRows = Dictionary(
+            uniqueKeysWithValues: SourceItemCatalog.allGearTypes.flatMap { gearType in
+                gearType.progressions.map { progression in
+                    (
+                        progression.iconName,
+                        (
+                            slug: gearType.sourceSlug,
+                            type: gearType.sourceTitle,
+                            itemLevel: String(progression.itemLevel),
+                            sourceID: progression.id,
+                            name: progression.name
+                        )
+                    )
+                }
+            }
+        )
+
+        var rowsByIconName: [String: SourceGearManifestRow] = [:]
+        for (lineIndex, line) in lines.enumerated() {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count == expectedHeader.count else {
+                issues.append(
+                    SpriteIssue(
+                        name: "source_gear_icons.tsv",
+                        message: "line \(lineIndex + 2) has \(columns.count) columns, expected \(expectedHeader.count)"
+                    )
+                )
+                continue
+            }
+
+            let row = SourceGearManifestRow(
+                iconName: columns[0],
+                slug: columns[1],
+                type: columns[2],
+                itemLevel: columns[3],
+                sourceID: columns[4],
+                name: columns[5],
+                sourceURL: columns[6],
+                sha256: columns[7],
+                bytes: columns[8]
+            )
+
+            if rowsByIconName[row.iconName] != nil {
+                issues.append(
+                    SpriteIssue(
+                        name: row.iconName,
+                        message: "duplicate source gear manifest row"
+                    )
+                )
+            }
+            rowsByIconName[row.iconName] = row
+        }
+
+        if rowsByIconName.count != SourceItemCatalog.expectedGearLevelProgressionCount {
+            issues.append(
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "manifest must cover \(SourceItemCatalog.expectedGearLevelProgressionCount) checked source gear progression icons, got \(rowsByIconName.count)"
+                )
+            )
+        }
+
+        let missing = Set(expectedRows.keys).subtracting(rowsByIconName.keys).sorted()
+        if !missing.isEmpty {
+            issues.append(
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "manifest is missing checked source gear icons: \(missing.prefix(6).joined(separator: ","))"
+                )
+            )
+        }
+
+        let extra = Set(rowsByIconName.keys).subtracting(expectedRows.keys).sorted()
+        if !extra.isEmpty {
+            issues.append(
+                SpriteIssue(
+                    name: "source_gear_icons.tsv",
+                    message: "manifest includes unknown source gear icons: \(extra.prefix(6).joined(separator: ","))"
+                )
+            )
+        }
+
+        for iconName in expectedRows.keys.sorted() {
+            guard let row = rowsByIconName[iconName],
+                  let expected = expectedRows[iconName] else {
+                continue
+            }
+
+            if row.slug != expected.slug ||
+                row.type != expected.type ||
+                row.itemLevel != expected.itemLevel ||
+                row.sourceID != expected.sourceID ||
+                row.name != expected.name {
+                issues.append(
+                    SpriteIssue(
+                        name: iconName,
+                        message: "manifest metadata does not match SourceItemCatalog row"
+                    )
+                )
+            }
+
+            let expectedURLPrefix = "https://taskbarhero.org/assets/tbhdb/game/gear/\(expected.slug)/"
+            if !row.sourceURL.hasPrefix(expectedURLPrefix) {
+                issues.append(
+                    SpriteIssue(
+                        name: iconName,
+                        message: "manifest source URL must stay under \(expectedURLPrefix), got \(row.sourceURL)"
+                    )
+                )
+            }
+
+            guard let expectedByteCount = Int(row.bytes), expectedByteCount > 0 else {
+                issues.append(
+                    SpriteIssue(
+                        name: iconName,
+                        message: "manifest byte count is invalid: \(row.bytes)"
+                    )
+                )
+                continue
+            }
+
+            guard let data = resourceData(named: iconName, withExtension: "png", subdirectory: "Extracted") else {
+                issues.append(
+                    SpriteIssue(
+                        name: iconName,
+                        message: "source gear icon payload is missing"
+                    )
+                )
+                continue
+            }
+
+            if data.count != expectedByteCount {
+                issues.append(
+                    SpriteIssue(
+                        name: iconName,
+                        message: "source gear icon byte count changed from manifest \(expectedByteCount) to \(data.count); do not replace source icons with redrawn art"
+                    )
+                )
+            }
+
+            let digest = sha256Hex(data)
+            if digest != row.sha256 {
+                issues.append(
+                    SpriteIssue(
+                        name: iconName,
+                        message: "source gear icon SHA-256 changed; expected \(row.sha256), got \(digest); do not redraw equipment icons"
+                    )
+                )
+            }
+        }
+
+        return issues
+    }
+
+    private static func validateCleanItemLikeSprite(
+        named spriteName: String,
+        context: String,
+        expectedWidth: Int,
+        expectedHeight: Int,
+        label: String
+    ) -> SpriteIssue? {
+        guard let url = Bundle.module.url(
+            forResource: spriteName,
+            withExtension: "png",
+            subdirectory: "Extracted"
+        ) else {
+            return nil
+        }
+
+        guard let data = try? Data(contentsOf: url),
+              let bitmap = NSBitmapImageRep(data: data) else {
+            return SpriteIssue(
+                name: context,
+                message: "\(label) sprite \(spriteName) could not be decoded as a bitmap"
+            )
+        }
+
+        guard bitmap.pixelsWide == expectedWidth, bitmap.pixelsHigh == expectedHeight else {
+            return SpriteIssue(
+                name: context,
+                message: "\(label) sprite \(spriteName) must be \(expectedWidth)x\(expectedHeight), got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
+            )
+        }
+
+        guard bitmap.hasAlpha else {
+            return SpriteIssue(
+                name: context,
+                message: "\(label) sprite \(spriteName) must keep a transparent background"
+            )
+        }
+
+        let cornerAlphaValues: [CGFloat] = [
+            alphaComponent(in: bitmap, x: 0, y: 0),
+            alphaComponent(in: bitmap, x: bitmap.pixelsWide - 1, y: 0),
+            alphaComponent(in: bitmap, x: 0, y: bitmap.pixelsHigh - 1),
+            alphaComponent(in: bitmap, x: bitmap.pixelsWide - 1, y: bitmap.pixelsHigh - 1)
+        ]
+        guard cornerAlphaValues.allSatisfy({ $0 == 0.0 }) else {
+            return SpriteIssue(
+                name: context,
+                message: "\(label) sprite \(spriteName) includes opaque corner pixels; likely a cropped inventory UI tile"
+            )
+        }
+
+        var visiblePixelCount = 0
+        var edgeVisiblePixelCount = 0
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                if alphaComponent(in: bitmap, x: x, y: y) > 0.10 {
+                    visiblePixelCount += 1
+                    if x == 0 || y == 0 || x == bitmap.pixelsWide - 1 || y == bitmap.pixelsHigh - 1 {
+                        edgeVisiblePixelCount += 1
+                    }
+                }
+            }
+        }
+
+        let visiblePixelRatio = Double(visiblePixelCount) / Double(bitmap.pixelsWide * bitmap.pixelsHigh)
+        guard (0.04...0.70).contains(visiblePixelRatio) else {
+            return SpriteIssue(
+                name: context,
+                message: "\(label) sprite \(spriteName) has suspicious visible-pixel coverage \(String(format: "%.1f", visiblePixelRatio * 100))%; likely blank or a cropped UI tile"
+            )
+        }
+
+        guard edgeVisiblePixelCount == 0 else {
+            return SpriteIssue(
+                name: context,
+                message: "\(label) sprite \(spriteName) has \(edgeVisiblePixelCount) visible pixels touching the canvas edge; likely includes grid lines or adjacent item fragments"
+            )
+        }
+
+        return nil
     }
 
     private static func validateItemGridSprite(
@@ -1036,10 +1685,10 @@ enum ResourceSelfTest {
             )
         }
 
-        guard bitmap.pixelsWide == 32, bitmap.pixelsHigh == 32 else {
+        guard bitmap.pixelsWide == 16, bitmap.pixelsHigh == 16 else {
             return SpriteIssue(
                 name: equipmentType.rawValue,
-                message: "item sprite \(spriteName) must be clean 32x32 type art, got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
+                message: "item sprite \(spriteName) must keep the pinned source gear icon size 16x16, got \(bitmap.pixelsWide)x\(bitmap.pixelsHigh)"
             )
         }
 
@@ -1047,20 +1696,6 @@ enum ResourceSelfTest {
             return SpriteIssue(
                 name: equipmentType.rawValue,
                 message: "item sprite \(spriteName) must keep a transparent background"
-            )
-        }
-
-        let cornerAlphaValues: [CGFloat] = [
-            alphaComponent(in: bitmap, x: 0, y: 0),
-            alphaComponent(in: bitmap, x: bitmap.pixelsWide - 1, y: 0),
-            alphaComponent(in: bitmap, x: 0, y: bitmap.pixelsHigh - 1),
-            alphaComponent(in: bitmap, x: bitmap.pixelsWide - 1, y: bitmap.pixelsHigh - 1)
-        ]
-
-        guard cornerAlphaValues.allSatisfy({ $0 == 0.0 }) else {
-            return SpriteIssue(
-                name: equipmentType.rawValue,
-                message: "item sprite \(spriteName) appears to include inventory frame edges instead of transparent art"
             )
         }
 
@@ -1074,10 +1709,10 @@ enum ResourceSelfTest {
         }
 
         let opaquePixelRatio = Double(opaquePixelCount) / Double(bitmap.pixelsWide * bitmap.pixelsHigh)
-        guard (0.08...0.70).contains(opaquePixelRatio) else {
+        guard (0.10...0.80).contains(opaquePixelRatio) else {
             return SpriteIssue(
                 name: equipmentType.rawValue,
-                message: "item sprite \(spriteName) has suspicious visible-pixel coverage \(String(format: "%.1f", opaquePixelRatio * 100))%; likely a cropped UI tile instead of clean equipment art"
+                message: "item sprite \(spriteName) has suspicious visible-pixel coverage \(String(format: "%.1f", opaquePixelRatio * 100))%; likely blank or not the pinned source gear icon"
             )
         }
 
@@ -1301,11 +1936,24 @@ enum ResourceSelfTest {
         var issues: [SpriteIssue] = []
         let mappedIcons = RuneTreeNode.allCases.map { GameArt.runeTreeIconName(for: $0) }
 
-        if !mappedIcons.allSatisfy({ $0.hasPrefix("rune_") }) {
+        if !mappedIcons.allSatisfy({ $0.hasPrefix("source_rune_") }) {
             issues.append(
                 SpriteIssue(
                     name: "RuneTreeArt",
-                    message: "modeled Rune Tree nodes must use bundled rune_* node art"
+                    message: "modeled Rune Tree nodes must use bundled source_rune_* node art"
+                )
+            )
+        }
+
+        let expectedSourceIconNames = Set(
+            SourceRuneCatalog.iconNames.map { GameArt.sourceRuneIconName(forIconFamily: $0) }
+        )
+        let bundledSourceIconNames = Set(GameArt.runeTreeIconNames)
+        if bundledSourceIconNames != expectedSourceIconNames {
+            issues.append(
+                SpriteIssue(
+                    name: "RuneTreeArt",
+                    message: "Rune Tree icon list must match the checked source icon families"
                 )
             )
         }
@@ -1392,6 +2040,9 @@ enum ResourceSelfTest {
     }
 
     private static func sourceNodeIconSize(named spriteName: String) -> (width: Int, height: Int) {
+        if spriteName.hasPrefix("source_rune_") {
+            return (16, 16)
+        }
         switch spriteName {
         case "rune_open_one_chest_type", "rune_open_all_chest_types":
             return (16, 16)
@@ -1514,6 +2165,7 @@ enum ResourceSelfTest {
         let inventoryAndPreviewVolumes = [
             GameAudioEvent.lootFound.volume,
             GameAudioEvent.itemEquipped.volume,
+            GameAudioEvent.itemConsumed.volume,
             GameAudioEvent.preview.volume
         ]
         let terminalVolumes = [
@@ -1591,6 +2243,346 @@ enum ResourceSelfTest {
                     message: "terminal/progression events must be throttled longer than repeatable combat events"
                 )
             )
+        }
+
+        return issues
+    }
+
+    private static func validateSFXPayloadProfiles() -> [SFXIssue] {
+        var issues: [SFXIssue] = []
+        var payloadsByData: [Data: [String]] = [:]
+        var profiles: [String: SFXProfileMetrics] = [:]
+
+        for name in requiredSFX {
+            guard let url = Bundle.module.url(
+                forResource: name,
+                withExtension: "wav",
+                subdirectory: "Extracted/sfx"
+            ) else {
+                continue
+            }
+
+            do {
+                let data = try Data(contentsOf: url)
+                payloadsByData[data, default: []].append(name)
+
+                let file = try AVAudioFile(forReading: url)
+                let duration = Double(file.length) / file.fileFormat.sampleRate
+                let levels = try measurePCM16MonoLevels(at: url)
+                profiles[name] = SFXProfileMetrics(
+                    duration: duration,
+                    rmsDBFS: levels.rmsDBFS,
+                    peakDBFS: levels.peakDBFS
+                )
+            } catch {
+                issues.append(
+                    SFXIssue(
+                        name: name,
+                        message: "SFX profile validation failed: \(error.localizedDescription)"
+                    )
+                )
+            }
+        }
+
+        for duplicateNames in payloadsByData.values where duplicateNames.count > 1 {
+            issues.append(
+                SFXIssue(
+                    name: duplicateNames.sorted().joined(separator: ","),
+                    message: "identical WAV payload reused by multiple audio events"
+                )
+            )
+        }
+
+        func requireRelationship(_ condition: Bool, name: String, message: String) {
+            guard !condition else { return }
+            issues.append(SFXIssue(name: name, message: message))
+        }
+
+        if let attack = profiles["sfx_hero_attack"],
+           let critical = profiles["sfx_hero_critical_hit"] {
+            requireRelationship(
+                critical.duration > attack.duration,
+                name: "sfx_hero_critical_hit",
+                message: "critical-hit SFX should be longer than basic attack SFX"
+            )
+            requireRelationship(
+                critical.rmsDBFS >= attack.rmsDBFS - 1.0,
+                name: "sfx_hero_critical_hit",
+                message: "critical-hit SFX should keep comparable energy to basic attack SFX"
+            )
+        }
+
+        if let attack = profiles["sfx_hero_attack"],
+           let skill = profiles["sfx_skill_cast"] {
+            requireRelationship(
+                skill.duration > attack.duration,
+                name: "sfx_skill_cast",
+                message: "skill-cast SFX should be longer than basic attack SFX"
+            )
+        }
+
+        if let preview = profiles["sfx_preview"],
+           let levelUp = profiles["sfx_level_up"] {
+            requireRelationship(
+                levelUp.duration > preview.duration * 2,
+                name: "sfx_level_up",
+                message: "level-up SFX should read as a longer progression cue than preview SFX"
+            )
+            requireRelationship(
+                levelUp.peakDBFS >= preview.peakDBFS,
+                name: "sfx_level_up",
+                message: "level-up SFX should not peak quieter than preview SFX"
+            )
+        }
+
+        if let equipped = profiles["sfx_item_equipped"],
+           let consumed = profiles["sfx_item_consumed"] {
+            requireRelationship(
+                consumed.duration >= equipped.duration,
+                name: "sfx_item_consumed",
+                message: "item-consumed SFX should be at least as long as item-equipped SFX"
+            )
+            requireRelationship(
+                consumed.peakDBFS >= equipped.peakDBFS,
+                name: "sfx_item_consumed",
+                message: "item-consumed SFX should not peak quieter than item-equipped SFX"
+            )
+        }
+
+        return issues
+    }
+
+    private static func validateSFXManifestPayloads() -> [SFXIssue] {
+        var issues: [SFXIssue] = []
+        let expectedHeader = [
+            "resourceName",
+            "event",
+            "provenance",
+            "officialAudio",
+            "sampleRate",
+            "channels",
+            "bitDepth",
+            "durationSeconds",
+            "sha256",
+            "bytes",
+            "note"
+        ]
+
+        guard let manifestData = resourceData(
+            named: "sfx_manifest",
+            withExtension: "tsv",
+            subdirectory: "Extracted/sfx"
+        ) else {
+            return [
+                SFXIssue(
+                    name: "sfx_manifest.tsv",
+                    message: "missing SFX provenance manifest"
+                )
+            ]
+        }
+
+        guard let manifestText = String(data: manifestData, encoding: .utf8) else {
+            return [
+                SFXIssue(
+                    name: "sfx_manifest.tsv",
+                    message: "SFX provenance manifest is not valid UTF-8"
+                )
+            ]
+        }
+
+        var lines = manifestText
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+        guard !lines.isEmpty else {
+            return [
+                SFXIssue(
+                    name: "sfx_manifest.tsv",
+                    message: "SFX provenance manifest is empty"
+                )
+            ]
+        }
+
+        let header = lines.removeFirst().split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        if header != expectedHeader {
+            issues.append(
+                SFXIssue(
+                    name: "sfx_manifest.tsv",
+                    message: "SFX manifest header mismatch: \(header.joined(separator: ","))"
+                )
+            )
+        }
+
+        var rowsByResourceName: [String: SFXManifestRow] = [:]
+        for (lineIndex, line) in lines.enumerated() {
+            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard columns.count == expectedHeader.count else {
+                issues.append(
+                    SFXIssue(
+                        name: "sfx_manifest.tsv",
+                        message: "line \(lineIndex + 2) has \(columns.count) columns, expected \(expectedHeader.count)"
+                    )
+                )
+                continue
+            }
+
+            let row = SFXManifestRow(
+                resourceName: columns[0],
+                event: columns[1],
+                provenance: columns[2],
+                officialAudio: columns[3],
+                sampleRate: columns[4],
+                channels: columns[5],
+                bitDepth: columns[6],
+                durationSeconds: columns[7],
+                sha256: columns[8],
+                bytes: columns[9],
+                note: columns[10]
+            )
+
+            if rowsByResourceName[row.resourceName] != nil {
+                issues.append(
+                    SFXIssue(
+                        name: row.resourceName,
+                        message: "duplicate SFX manifest row"
+                    )
+                )
+            }
+            rowsByResourceName[row.resourceName] = row
+        }
+
+        let expectedResourceNames = Set(requiredSFX)
+        let manifestResourceNames = Set(rowsByResourceName.keys)
+
+        for missingResource in expectedResourceNames.subtracting(manifestResourceNames).sorted() {
+            issues.append(
+                SFXIssue(
+                    name: missingResource,
+                    message: "missing from SFX provenance manifest"
+                )
+            )
+        }
+
+        for extraResource in manifestResourceNames.subtracting(expectedResourceNames).sorted() {
+            issues.append(
+                SFXIssue(
+                    name: extraResource,
+                    message: "manifest row is not referenced by GameAudioEvent"
+                )
+            )
+        }
+
+        for event in GameAudioEvent.allCases {
+            let resourceName = event.bundledResourceName
+            guard let row = rowsByResourceName[resourceName] else {
+                continue
+            }
+
+            if row.event != event.rawValue {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest event \(row.event) does not match GameAudioEvent.\(event.rawValue)"
+                    )
+                )
+            }
+
+            if row.provenance != "generated_substitute" {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest provenance must stay generated_substitute until isolated original SFX are available"
+                    )
+                )
+            }
+
+            if row.officialAudio != "false" {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest officialAudio must be false for local substitute SFX"
+                    )
+                )
+            }
+
+            if !row.note.contains("not extracted from original TBH") {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest note must explicitly state the cue is not extracted from original TBH"
+                    )
+                )
+            }
+
+            guard let data = resourceData(
+                named: resourceName,
+                withExtension: "wav",
+                subdirectory: "Extracted/sfx"
+            ) else {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifested SFX payload is missing"
+                    )
+                )
+                continue
+            }
+
+            if row.bytes != String(data.count) {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest bytes \(row.bytes) does not match payload \(data.count)"
+                    )
+                )
+            }
+
+            let digest = sha256Hex(data)
+            if row.sha256 != digest {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest SHA-256 \(row.sha256) does not match payload \(digest)"
+                    )
+                )
+            }
+
+            guard let url = Bundle.module.url(
+                forResource: resourceName,
+                withExtension: "wav",
+                subdirectory: "Extracted/sfx"
+            ) else {
+                continue
+            }
+
+            do {
+                let file = try AVAudioFile(forReading: url)
+                let format = file.fileFormat
+                let streamDescription = format.streamDescription.pointee
+                let duration = Double(file.length) / format.sampleRate
+                let checks = [
+                    ("sampleRate", row.sampleRate, String(Int(format.sampleRate.rounded()))),
+                    ("channels", row.channels, String(format.channelCount)),
+                    ("bitDepth", row.bitDepth, String(streamDescription.mBitsPerChannel)),
+                    ("durationSeconds", row.durationSeconds, String(format: "%.3f", duration))
+                ]
+
+                for (field, actualManifestValue, expectedPayloadValue) in checks
+                    where actualManifestValue != expectedPayloadValue {
+                    issues.append(
+                        SFXIssue(
+                            name: resourceName,
+                            message: "manifest \(field)=\(actualManifestValue) does not match payload \(expectedPayloadValue)"
+                        )
+                    )
+                }
+            } catch {
+                issues.append(
+                    SFXIssue(
+                        name: resourceName,
+                        message: "manifest payload validation failed: \(error.localizedDescription)"
+                    )
+                )
+            }
         }
 
         return issues
@@ -1785,5 +2777,146 @@ enum ResourceSelfTest {
             (UInt32(data[offset + 1]) << 8) |
             (UInt32(data[offset + 2]) << 16) |
             (UInt32(data[offset + 3]) << 24)
+    }
+
+    private static func bigEndianUInt32(in data: Data, at offset: Int) -> UInt32 {
+        guard offset >= 0, offset + 4 <= data.count else { return 0 }
+        return (UInt32(data[offset]) << 24) |
+            (UInt32(data[offset + 1]) << 16) |
+            (UInt32(data[offset + 2]) << 8) |
+            UInt32(data[offset + 3])
+    }
+
+    private static func resourceData(
+        named name: String,
+        withExtension resourceExtension: String,
+        subdirectory: String
+    ) -> Data? {
+        guard let url = Bundle.module.url(
+            forResource: name,
+            withExtension: resourceExtension,
+            subdirectory: subdirectory
+        ) else {
+            return nil
+        }
+        return try? Data(contentsOf: url)
+    }
+
+    private static func sha256Hex(_ data: Data) -> String {
+        let digest = sha256(data)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func sha256(_ data: Data) -> [UInt8] {
+        var message = [UInt8](data)
+        let bitLength = UInt64(message.count) * 8
+
+        message.append(0x80)
+        while message.count % 64 != 56 {
+            message.append(0)
+        }
+        for shift in stride(from: 56, through: 0, by: -8) {
+            message.append(UInt8((bitLength >> UInt64(shift)) & 0xff))
+        }
+
+        var h0: UInt32 = 0x6a09e667
+        var h1: UInt32 = 0xbb67ae85
+        var h2: UInt32 = 0x3c6ef372
+        var h3: UInt32 = 0xa54ff53a
+        var h4: UInt32 = 0x510e527f
+        var h5: UInt32 = 0x9b05688c
+        var h6: UInt32 = 0x1f83d9ab
+        var h7: UInt32 = 0x5be0cd19
+
+        let k: [UInt32] = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+            0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+            0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+            0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+            0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+            0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+            0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+            0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+            0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ]
+
+        for chunkStart in stride(from: 0, to: message.count, by: 64) {
+            var w = Array(repeating: UInt32(0), count: 64)
+
+            for index in 0..<16 {
+                let offset = chunkStart + index * 4
+                w[index] = (UInt32(message[offset]) << 24) |
+                    (UInt32(message[offset + 1]) << 16) |
+                    (UInt32(message[offset + 2]) << 8) |
+                    UInt32(message[offset + 3])
+            }
+
+            for index in 16..<64 {
+                let s0 = rightRotate(w[index - 15], by: 7) ^
+                    rightRotate(w[index - 15], by: 18) ^
+                    (w[index - 15] >> 3)
+                let s1 = rightRotate(w[index - 2], by: 17) ^
+                    rightRotate(w[index - 2], by: 19) ^
+                    (w[index - 2] >> 10)
+                w[index] = w[index - 16] &+ s0 &+ w[index - 7] &+ s1
+            }
+
+            var a = h0
+            var b = h1
+            var c = h2
+            var d = h3
+            var e = h4
+            var f = h5
+            var g = h6
+            var h = h7
+
+            for index in 0..<64 {
+                let s1 = rightRotate(e, by: 6) ^ rightRotate(e, by: 11) ^ rightRotate(e, by: 25)
+                let ch = (e & f) ^ ((~e) & g)
+                let temp1 = h &+ s1 &+ ch &+ k[index] &+ w[index]
+                let s0 = rightRotate(a, by: 2) ^ rightRotate(a, by: 13) ^ rightRotate(a, by: 22)
+                let maj = (a & b) ^ (a & c) ^ (b & c)
+                let temp2 = s0 &+ maj
+
+                h = g
+                g = f
+                f = e
+                e = d &+ temp1
+                d = c
+                c = b
+                b = a
+                a = temp1 &+ temp2
+            }
+
+            h0 = h0 &+ a
+            h1 = h1 &+ b
+            h2 = h2 &+ c
+            h3 = h3 &+ d
+            h4 = h4 &+ e
+            h5 = h5 &+ f
+            h6 = h6 &+ g
+            h7 = h7 &+ h
+        }
+
+        var digest: [UInt8] = []
+        digest.reserveCapacity(32)
+        for word in [h0, h1, h2, h3, h4, h5, h6, h7] {
+            digest.append(UInt8((word >> 24) & 0xff))
+            digest.append(UInt8((word >> 16) & 0xff))
+            digest.append(UInt8((word >> 8) & 0xff))
+            digest.append(UInt8(word & 0xff))
+        }
+        return digest
+    }
+
+    private static func rightRotate(_ value: UInt32, by count: UInt32) -> UInt32 {
+        (value >> count) | (value << (32 - count))
     }
 }

@@ -127,6 +127,8 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.hero.level == 1)
         #expect(engine.hero.gold == 0)
         #expect(engine.inventory.items.isEmpty)
+        #expect(engine.purchasedInventoryExpansionCount == 0)
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity)
         #expect(engine.cubeProgress.totalExperience == 0)
         #expect(engine.cubeProgress.infusedItemCount == 0)
         #expect(engine.progress.killsInChapter == 0)
@@ -225,6 +227,92 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(!reloaded.soundEffectsEnabled)
     }
 
+    @Test func purchasedInventoryExpansionCanRepeatAndPersist() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-\(UUID().uuidString)", isDirectory: true)
+        let manager = SaveManager(directory: tempDir)
+        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        engine.start()
+
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity)
+        #expect(engine.nextInventoryExpansionGoldCost == 50_000)
+        #expect(!engine.canPurchaseInventoryExpansion())
+
+        engine.hero.gainGold(150_000)
+        #expect(engine.purchaseInventoryExpansion())
+        #expect(engine.purchasedInventoryExpansionCount == 1)
+        #expect(engine.hero.gold == 100_000)
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + InventoryExpansion.slotBonus)
+        #expect(engine.nextInventoryExpansionGoldCost == 100_000)
+
+        #expect(engine.purchaseInventoryExpansion())
+        #expect(engine.purchasedInventoryExpansionCount == 2)
+        #expect(engine.hero.gold == 0)
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + InventoryExpansion.slotBonus * 2)
+        #expect(engine.nextInventoryExpansionGoldCost == 150_000)
+        #expect(!engine.purchaseInventoryExpansion())
+        engine.stop()
+
+        let reloaded = GameEngine(saveManager: manager, audio: RecordingAudio())
+        reloaded.start()
+        reloaded.stop()
+        #expect(reloaded.purchasedInventoryExpansionCount == 2)
+        #expect(reloaded.inventory.maxCapacity == Inventory.baseCapacity + InventoryExpansion.slotBonus * 2)
+        #expect(reloaded.nextInventoryExpansionGoldCost == 150_000)
+    }
+
+    @Test func worseEquipmentHandlingCanKeepAlchemizeOrDiscardNewLoot() {
+        let engine = makeEngine()
+        let equipped = Item(
+            id: "equipped-weapon",
+            name: "强剑",
+            rarity: .rare,
+            slot: .weapon,
+            stats: ItemStats(bonusATK: 50),
+            description: "",
+            equipmentType: .sword
+        )
+        let weakLoot = Item(
+            id: "weak-loot",
+            name: "弱剑",
+            rarity: .uncommon,
+            slot: .weapon,
+            stats: ItemStats(bonusATK: 1),
+            description: "",
+            equipmentType: .sword
+        )
+        engine.inventory.add(equipped)
+        engine.equipItem(equipped)
+
+        #expect(engine.retainLootForTesting(weakLoot))
+        #expect(engine.inventory.items.contains(weakLoot))
+
+        engine.inventory.remove(weakLoot)
+        engine.setWorseEquipmentHandling(.alchemize)
+        let goldBeforeAlchemy = engine.hero.gold
+        #expect(engine.retainLootForTesting(weakLoot))
+        #expect(!engine.inventory.items.contains(weakLoot))
+        #expect(engine.hero.gold == goldBeforeAlchemy + Rarity.uncommon.alchemyGoldValue)
+
+        engine.setWorseEquipmentHandling(.discard)
+        let goldBeforeDiscard = engine.hero.gold
+        #expect(engine.retainLootForTesting(weakLoot))
+        #expect(!engine.inventory.items.contains(weakLoot))
+        #expect(engine.hero.gold == goldBeforeDiscard)
+
+        let strongerLoot = Item(
+            id: "stronger-loot",
+            name: "更强剑",
+            rarity: .legendary,
+            slot: .weapon,
+            stats: ItemStats(bonusATK: 500),
+            description: "",
+            equipmentType: .sword
+        )
+        #expect(engine.retainLootForTesting(strongerLoot))
+        #expect(engine.inventory.items.contains(strongerLoot))
+    }
+
     @Test func offlineRewardsRequireRuneOfRepose() {
         func makeManager(name: String, runeTree: RuneTree) -> SaveManager {
             let tempDir = FileManager.default.temporaryDirectory
@@ -272,6 +360,41 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         boosted.stop()
         #expect(boosted.statistics.offlineXP > unlocked.statistics.offlineXP)
         #expect(boosted.statistics.offlineGold > unlocked.statistics.offlineGold)
+    }
+
+    @Test func completionSettlementPausesOfflineRewardsUntilNextPlaythrough() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-completion-offline-\(UUID().uuidString)", isDirectory: true)
+        let manager = SaveManager(directory: tempDir)
+        var progress = ProgressTracker()
+        progress.currentDifficultyIndex = Difficulty.allCases.count - 1
+        progress.currentChapterIndex = Chapter.allCases.count - 1
+        progress.currentStageIndex = StageDefinition.stagesPerAct - 1
+        progress.highestUnlockedDifficultyIndex = Difficulty.allCases.count - 1
+        progress.highestUnlockedChapterIndex = Chapter.allCases.count - 1
+        progress.highestUnlockedStageIndex = StageDefinition.stagesPerAct - 1
+        progress.killsInChapter = 1
+        progress.completedPlaythroughs = 1
+        progress.isAwaitingNewGamePlus = true
+
+        manager.save(SaveData(
+            hero: Hero(),
+            runeTree: RuneTree(unlockedNodes: [.offlineRewards]),
+            inventory: Inventory(),
+            progress: progress,
+            statistics: GameStatistics(),
+            timestamp: Date().addingTimeInterval(-3_600)
+        ))
+
+        let engine = GameEngine(saveManager: manager, audio: RecordingAudio())
+        engine.start()
+        engine.stop()
+
+        #expect(engine.progress.isAwaitingNewGamePlus)
+        #expect(engine.currentBattle == nil)
+        #expect(engine.statistics.offlineXP == 0)
+        #expect(engine.statistics.offlineGold == 0)
+        #expect(engine.hero.gold == 0)
     }
 
     @Test func heroClassSettingPersistsAndRefreshesBattle() {
@@ -544,6 +667,57 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.inventory.items.count == 4)
         #expect(engine.statistics.itemsFound == 4)
     }
+
+    @Test func autoOpenNormalChestRuneConsumesOnlyNormalMonsterBoxes() {
+        let engine = makeEngine()
+        engine.hero.gainXP(1_000)
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster))
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 10, sourceStageCode: "1-9", sourceDifficulty: .normal, family: .stageBoss))
+
+        #expect(engine.unlockRuneTreeNode(.autoOpenNormalChests))
+        #expect(engine.runeTree.canAutoOpenNormalChests)
+        #expect(engine.progress.chests.totalCount == 1)
+        #expect(engine.progress.chests.chests.first?.family == .stageBoss)
+        #expect(engine.progress.soulStones.count(for: .normal) == 1)
+        #expect(engine.inventory.items.count == 1)
+        #expect(engine.statistics.itemsFound == 1)
+    }
+
+    @Test func autoOpenStageBossChestRuneConsumesOnlyStageBossBoxes() {
+        let engine = makeEngine()
+        engine.hero.gainXP(1_000)
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster))
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 10, sourceStageCode: "1-9", sourceDifficulty: .normal, family: .stageBoss))
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 30, sourceStageCode: "3-10", sourceDifficulty: .normal, family: .actBoss))
+
+        #expect(engine.unlockRuneTreeNode(.autoOpenStageBossChests))
+        #expect(engine.runeTree.canAutoOpenStageBossChests)
+        #expect(engine.progress.chests.totalCount == 2)
+        #expect(engine.progress.chests.chests.filter { $0.family == .normalMonster }.count == 1)
+        #expect(engine.progress.chests.chests.filter { $0.family == .stageBoss }.isEmpty)
+        #expect(engine.progress.chests.chests.filter { $0.family == .actBoss }.count == 1)
+        #expect(engine.progress.soulStones.count(for: .normal) == 1)
+        #expect(engine.inventory.items.count == 1)
+        #expect(engine.statistics.itemsFound == 1)
+    }
+
+    @Test func autoOpenActBossChestRuneConsumesOnlyActBossBoxes() {
+        let engine = makeEngine()
+        engine.hero.gainXP(1_000)
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster))
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 10, sourceStageCode: "1-9", sourceDifficulty: .normal, family: .stageBoss))
+        engine.progress.chests.add(LootChest(kind: .normal, itemLevel: 30, sourceStageCode: "3-10", sourceDifficulty: .normal, family: .actBoss))
+
+        #expect(engine.unlockRuneTreeNode(.autoOpenActBossChests))
+        #expect(engine.runeTree.canAutoOpenActBossChests)
+        #expect(engine.progress.chests.totalCount == 2)
+        #expect(engine.progress.chests.chests.filter { $0.family == .normalMonster }.count == 1)
+        #expect(engine.progress.chests.chests.filter { $0.family == .stageBoss }.count == 1)
+        #expect(engine.progress.chests.chests.filter { $0.family == .actBoss }.isEmpty)
+        #expect(engine.progress.soulStones.count(for: .normal) == 1)
+        #expect(engine.inventory.items.count == 1)
+        #expect(engine.statistics.itemsFound == 1)
+    }
 }
 
 @Suite struct SaveManagerTests {
@@ -554,6 +728,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
         let hero = Hero()
         hero.gainGold(123)
+        hero.unlockedPassiveSkillIDs = ["101001", "101002"]
         var runeTree = RuneTree(unlockedPartySlotCount: 2)
         runeTree.unlockedNodes.insert(.activeSkillSlot2)
         runeTree.unlockedNodes.insert(.inventoryExpansion1)
@@ -574,6 +749,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
             progress: progress,
             statistics: GameStatistics(),
             autoEquipBestItems: true,
+            worseEquipmentHandling: .alchemize,
             soundEffectsEnabled: false,
             unyieldingWillConsumedStageKey: "4:3-9",
             timestamp: Date()
@@ -582,6 +758,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
         let loaded = try #require(manager.load())
         #expect(loaded.hero.gold == 123)
+        #expect(loaded.hero.unlockedPassiveSkillIDs == ["101001", "101002"])
         #expect(loaded.party.member(at: 0)?.heroClass == .priest)
         #expect(loaded.runeTree.unlockedPartySlotCount == 2)
         #expect(loaded.runeTree.activeSkillSlotCount == 2)
@@ -592,6 +769,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(loaded.cubeProgress.infusedItemCount == 1)
         #expect(loaded.activeSkillLoadouts.activeSkills(for: .priest, heroLevel: 1, slotCount: 1).map(\.id) == ["40301"])
         #expect(loaded.autoEquipBestItems)
+        #expect(loaded.worseEquipmentHandling == .alchemize)
         #expect(!loaded.soundEffectsEnabled)
         #expect(loaded.unyieldingWillConsumedStageKey == "4:3-9")
         #expect(loaded.progress.soulStones.count(for: .normal) == 1)
@@ -601,5 +779,6 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         engine.start()
         engine.stop()
         #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus)
+        #expect(engine.worseEquipmentHandling == .alchemize)
     }
 }

@@ -53,8 +53,11 @@ jobs:
       - name: Run local fidelity audits
         run: |
           swift run TBH --resource-self-test
+          scripts/audit-local-workflow-fidelity-gates.sh
           scripts/audit-local-gameplay-fidelity.sh
+          scripts/audit-local-app-icons.sh
           scripts/audit-local-item-icons.sh
+          scripts/audit-local-rune-icons.sh
           scripts/audit-local-passive-skill-icons.sh
           scripts/audit-local-hero-sprites.sh
           scripts/audit-local-sfx.sh
@@ -62,6 +65,16 @@ jobs:
 
       - name: Package TBH.app
         run: bash scripts/package-app.sh dist
+
+      - name: Run packaged resource fidelity audits
+        run: |
+          scripts/audit-local-app-icons.sh
+          scripts/audit-local-item-icons.sh
+          scripts/audit-local-rune-icons.sh
+          scripts/audit-local-passive-skill-icons.sh
+          scripts/audit-local-hero-sprites.sh
+          scripts/audit-local-sfx.sh
+          PACKAGED_BATTLE_SCENE_RENDER=1 RENDER_BATTLE_SCENE=1 scripts/audit-local-battle-scene.sh
 
       - name: Install create-dmg
         run: brew install create-dmg

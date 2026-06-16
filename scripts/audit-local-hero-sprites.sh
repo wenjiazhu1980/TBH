@@ -2,6 +2,7 @@
 set -euo pipefail
 
 sprite_dir="${SPRITE_DIR:-Sources/Resources/Extracted}"
+packaged_sprite_dir="${PACKAGED_SPRITE_DIR:-dist/TBH.app/Contents/Resources/TBH-macOS_TBH.bundle/Extracted}"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -323,3 +324,57 @@ if failures:
 print("")
 print("local hero sprite audit passed")
 PY
+
+if [[ "${AUDIT_LOCAL_HERO_SPRITES_SKIP_PACKAGED:-0}" != "1" &&
+      -d "$packaged_sprite_dir" &&
+      "$sprite_dir" != "$packaged_sprite_dir" ]]; then
+  echo
+  echo "packaged_app_hero_sprite_audit"
+  echo "-------------------------------"
+  SPRITE_DIR="$packaged_sprite_dir" \
+    AUDIT_LOCAL_HERO_SPRITES_SKIP_PACKAGED=1 \
+    "$0"
+
+  python3 - "$sprite_dir" "$packaged_sprite_dir" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+source_dir = Path(sys.argv[1])
+packaged_dir = Path(sys.argv[2])
+
+prefixes = ("battle_hero_", "official_hero_")
+names = sorted(
+    path.name
+    for path in source_dir.glob("*.png")
+    if path.name.startswith(prefixes)
+)
+
+issues = []
+for name in names:
+    source_path = source_dir / name
+    packaged_path = packaged_dir / name
+    if not packaged_path.is_file():
+        issues.append(f"packaged app missing hero sprite: {name}")
+        continue
+
+    if hashlib.sha256(source_path.read_bytes()).hexdigest() != hashlib.sha256(packaged_path.read_bytes()).hexdigest():
+        issues.append(f"packaged app hero sprite differs from source: {name}")
+
+extra_packaged = sorted(
+    path.name
+    for path in packaged_dir.glob("*.png")
+    if path.name.startswith(prefixes) and path.name not in names
+)
+for name in extra_packaged:
+    issues.append(f"packaged app has unexpected hero sprite: {name}")
+
+if issues:
+    print("packaged app hero sprite payload issues:")
+    for issue in issues:
+        print(f"- {issue}")
+    sys.exit(1)
+
+print(f"packaged_app_hero_sprite_payload_match=checked sprites:{len(names)}")
+PY
+fi

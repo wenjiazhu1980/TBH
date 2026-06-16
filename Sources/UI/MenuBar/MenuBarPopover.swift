@@ -31,7 +31,12 @@ struct MenuBarPopover: View {
                         inventory: gameEngine.inventory,
                         hero: gameEngine.hero,
                         cubeProgress: gameEngine.cubeProgress,
+                        purchasedExpansionCount: gameEngine.purchasedInventoryExpansionCount,
+                        nextExpansionCost: gameEngine.nextInventoryExpansionGoldCost,
+                        worseEquipmentHandling: gameEngine.worseEquipmentHandling,
                         onEquip: { gameEngine.equipItem($0) },
+                        onExpandInventory: { gameEngine.purchaseInventoryExpansion() },
+                        onWorseEquipmentHandlingChange: { gameEngine.setWorseEquipmentHandling($0) },
                         onInfuseIntoCube: { gameEngine.infuseItemIntoCube($0) },
                         onAlchemize: { gameEngine.alchemizeItem($0) },
                         onSynthesize: { gameEngine.synthesizeItems(rarity: $0) }
@@ -105,7 +110,7 @@ enum MenuBarPopoverLayout {
     static let minimumScale: Double = 0.85
     static let maximumScale: Double = 1.25
     static let scaleStep: Double = 0.05
-    static let defaultSize = CGSize(width: 342, height: 420)
+    static let defaultSize = CGSize(width: 430, height: 520)
 
     static func normalizedScale(_ scale: Double) -> Double {
         min(max(scale, minimumScale), maximumScale)
@@ -117,6 +122,18 @@ enum MenuBarPopoverLayout {
             width: defaultSize.width * normalized,
             height: defaultSize.height * normalized
         )
+    }
+}
+
+enum OriginalControlShortcuts {
+    static let scaleResetFunctionKeyCode = Int(NSF11FunctionKey)
+    static let scaleResetModifiers: EventModifiers = [.shift]
+
+    static var scaleResetKey: KeyEquivalent {
+        guard let scalar = UnicodeScalar(scaleResetFunctionKeyCode) else {
+            return KeyEquivalent(" ")
+        }
+        return KeyEquivalent(Character(scalar))
     }
 }
 

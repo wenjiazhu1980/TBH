@@ -95,6 +95,18 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
 
+                GroupBox("原版关卡数据库") {
+                    SourceStageDatabaseView()
+                        .font(.system(size: 11))
+                        .padding(.vertical, 4)
+                }
+
+                GroupBox("原版技能数据库") {
+                    SourceSkillDatabaseView()
+                        .font(.system(size: 11))
+                        .padding(.vertical, 4)
+                }
+
                 GroupBox("箱子") {
                     VStack(alignment: .leading, spacing: 6) {
                         if gameEngine.progress.chests.chests.isEmpty {
@@ -249,6 +261,12 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
 
+                GroupBox("原版符文数据库") {
+                    SourceRuneDatabaseView()
+                        .font(.system(size: 11))
+                        .padding(.vertical, 4)
+                }
+
                 GroupBox("自动化") {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(
@@ -319,6 +337,10 @@ struct SettingsView: View {
                         } label: {
                             Label("重置面板尺寸", systemImage: "arrow.up.left.and.down.right.magnifyingglass")
                         }
+                        .keyboardShortcut(
+                            OriginalControlShortcuts.scaleResetKey,
+                            modifiers: OriginalControlShortcuts.scaleResetModifiers
+                        )
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .disabled(panelScale == MenuBarPopoverLayout.defaultScale)
@@ -441,6 +463,404 @@ struct SettingsView: View {
     private func quitGame() {
         gameEngine.stop()
         NSApplication.shared.terminate(nil)
+    }
+}
+
+private struct SourceRuneDatabaseView: View {
+    private let runtimeModeledSourceIDs = SourceRuneCatalog.runtimeModeledSourceIDs
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                SourceRuneSummaryPill(
+                    label: "节点",
+                    value: "\(SourceRuneCatalog.all.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "连线",
+                    value: "\(SourceRuneCatalog.connectionCount)"
+                )
+                SourceRuneSummaryPill(
+                    label: "运行时",
+                    value: "\(SourceRuneCatalog.runtimeModeledNodes.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "数据",
+                    value: "\(SourceRuneCatalog.runtimeUnmodeledNodes.count)"
+                )
+            }
+
+            HStack {
+                Text("图标族")
+                Spacer()
+                Text("\(SourceRuneCatalog.iconNames.count)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(SourceRuneCatalog.all) { sourceNode in
+                        SourceRuneNodeSourceRow(
+                            sourceNode: sourceNode,
+                            isRuntimeModeled: runtimeModeledSourceIDs.contains(sourceNode.id)
+                        )
+                    }
+                }
+                .padding(.top, 4)
+            } label: {
+                HStack {
+                    Text("完整源表")
+                        .font(.system(size: 10, weight: .semibold))
+                    Spacer()
+                    Text("v1.00.09")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct SourceRuneSummaryPill: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .lineLimit(1)
+            Text(label)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.08))
+        .cornerRadius(4)
+    }
+}
+
+private struct SourceStageDatabaseView: View {
+    private let uniqueMonsterNames = Set(
+        StageDefinition.all.flatMap { stage in
+            Difficulty.allCases.flatMap { difficulty in
+                stage.runtimeData(for: difficulty).monsterComposition.map(\.name)
+            }
+        }
+    )
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                SourceRuneSummaryPill(
+                    label: "关卡",
+                    value: "\(StageDefinition.all.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "难度行",
+                    value: "\(StageDefinition.runtimeDataCount)"
+                )
+                SourceRuneSummaryPill(
+                    label: "难度",
+                    value: "\(Difficulty.allCases.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "怪物",
+                    value: "\(uniqueMonsterNames.count)"
+                )
+            }
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Difficulty.allCases, id: \.rawValue) { difficulty in
+                        ForEach(StageDefinition.all) { stage in
+                            SourceStageRuntimeRow(stage: stage, difficulty: difficulty)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            } label: {
+                HStack {
+                    Text("完整源表")
+                        .font(.system(size: 10, weight: .semibold))
+                    Spacer()
+                    Text("120 行")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct SourceStageRuntimeRow: View {
+    let stage: StageDefinition
+    let difficulty: Difficulty
+
+    private var runtime: StageRuntimeData {
+        stage.runtimeData(for: difficulty)
+    }
+
+    var body: some View {
+        HStack(spacing: 7) {
+            VStack(spacing: 1) {
+                Text(runtime.code)
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .lineLimit(1)
+                Text(difficulty.name)
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 40, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(stage.displayName)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    if runtime.isBoss {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.orange)
+                    }
+                }
+
+                Text(stageRuntimeDetailText)
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(runtimePaceText)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(runtime.isBoss ? .orange : .secondary)
+                Text("Lv.\(runtime.level)")
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var runtimePaceText: String {
+        runtime.isBoss ? "Boss" : "\(runtime.waves)W/\(runtime.killsRequired)K"
+    }
+
+    private var stageRuntimeDetailText: String {
+        let monsters = runtime.monsterComposition
+            .prefix(3)
+            .map { spawn in
+                "\(spawn.name)x\(spawn.count)"
+            }
+            .joined(separator: ",")
+        let overflow = runtime.monsterComposition.count > 3 ? ",+" : ""
+        let compositionText = monsters.isEmpty ? runtime.monsterName : "\(monsters)\(overflow)"
+        return "\(runtime.goldReward)G/\(runtime.xpReward)XP · HP \(runtime.hp) · \(compositionText)"
+    }
+}
+
+private struct SourceSkillDatabaseView: View {
+    private let runtimeModeledSkillIDs = SourceSkillCatalog.runtimeModeledSkillIDs
+    private let activationTypes = Set(SourceSkillCatalog.all.map(\.activation))
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                SourceRuneSummaryPill(
+                    label: "源技能",
+                    value: "\(SourceSkillCatalog.all.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "运行时",
+                    value: "\(SourceSkillCatalog.runtimeModeledSkills.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "数据",
+                    value: "\(SourceSkillCatalog.all.count - SourceSkillCatalog.runtimeModeledSkills.count)"
+                )
+                SourceRuneSummaryPill(
+                    label: "激活",
+                    value: "\(activationTypes.count)"
+                )
+            }
+
+            HStack {
+                Text("伤害 / 投射")
+                Spacer()
+                Text("\(SourceSkillCatalog.damageTypes.count) / \(SourceSkillCatalog.deliveries.count)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(SourceSkillCatalog.all) { sourceSkill in
+                        SourceSkillRow(
+                            sourceSkill: sourceSkill,
+                            isRuntimeModeled: runtimeModeledSkillIDs.contains(sourceSkill.id)
+                        )
+                    }
+                }
+                .padding(.top, 4)
+            } label: {
+                HStack {
+                    Text("完整源表")
+                        .font(.system(size: 10, weight: .semibold))
+                    Spacer()
+                    Text("106 行")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct SourceSkillRow: View {
+    let sourceSkill: SourceSkill
+    let isRuntimeModeled: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: sourceSkillIconName)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(sourceSkillTint)
+                .frame(width: 18, height: 18)
+                .opacity(isRuntimeModeled ? 1 : 0.58)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text("#\(sourceSkill.id)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    Text(sourceSkill.name)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    if isRuntimeModeled {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                }
+
+                Text(sourceSkillDetailText)
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(sourceSkill.activation.rawValue)
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+                Text(isRuntimeModeled ? "已接入" : "源数据")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundColor(isRuntimeModeled ? .green : .secondary)
+            }
+            .frame(width: 78, alignment: .trailing)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var sourceSkillDetailText: String {
+        let delivery = sourceSkill.delivery.isEmpty ? "NoDelivery" : sourceSkill.delivery
+        return "\(sourceSkill.damageType) · \(delivery) · R\(sourceSkill.range)"
+    }
+
+    private var sourceSkillIconName: String {
+        switch sourceSkill.activation {
+        case .cooldown:
+            return "timer"
+        case .baseAttack:
+            return "target"
+        case .baseAttackCount:
+            return "number.circle"
+        case .continuous:
+            return "infinity"
+        }
+    }
+
+    private var sourceSkillTint: Color {
+        switch sourceSkill.runtimeDamageElement {
+        case .physical:
+            return .gray
+        case .fire:
+            return .orange
+        case .cold:
+            return .cyan
+        case .lightning:
+            return .yellow
+        case .chaos:
+            return .purple
+        case .none:
+            return .secondary
+        }
+    }
+}
+
+private struct SourceRuneNodeSourceRow: View {
+    let sourceNode: SourceRuneNode
+    let isRuntimeModeled: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            PixelSprite(
+                imageName: GameArt.sourceRuneIconName(for: sourceNode),
+                size: CGSize(width: 18, height: 18)
+            )
+            .opacity(isRuntimeModeled ? 1 : 0.58)
+            .saturation(isRuntimeModeled ? 1 : 0.55)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text("#\(sourceNode.id)")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    Text(sourceNode.zhName)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    if isRuntimeModeled {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                }
+
+                Text("\(sourceNode.enName) · Lv.\(sourceNode.maxLevel) · \(sourceNode.iconName)")
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("\(sourceNode.previousIDs.count) / \(sourceNode.nextIDs.count)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Text(isRuntimeModeled ? "已接入" : "源数据")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundColor(isRuntimeModeled ? .green : .secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 

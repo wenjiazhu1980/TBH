@@ -359,6 +359,26 @@ extension LootChest {
     }
 }
 
+struct ChestStorageLimits: Equatable {
+    static let base = ChestStorageLimits(normalMonster: 1, stageBoss: 1, actBoss: 1)
+    static let unlimited = ChestStorageLimits(normalMonster: Int.max, stageBoss: Int.max, actBoss: Int.max)
+
+    let normalMonster: Int
+    let stageBoss: Int
+    let actBoss: Int
+
+    func limit(for family: ChestFamily) -> Int {
+        switch family {
+        case .normalMonster:
+            return normalMonster
+        case .stageBoss:
+            return stageBoss
+        case .actBoss:
+            return actBoss
+        }
+    }
+}
+
 struct ChestInventory: Codable, Equatable {
     private(set) var chests: [LootChest] = []
 
@@ -372,6 +392,10 @@ struct ChestInventory: Codable, Equatable {
         chests.first { $0.kind == kind }
     }
 
+    func first(family: ChestFamily) -> LootChest? {
+        chests.first { $0.family == family }
+    }
+
     func first(id: String) -> LootChest? {
         chests.first { $0.id == id }
     }
@@ -380,8 +404,24 @@ struct ChestInventory: Codable, Equatable {
         chests.append(chest)
     }
 
+    mutating func add(_ chest: LootChest, limits: ChestStorageLimits) {
+        let limit = limits.limit(for: chest.family)
+        guard limit > 0 else { return }
+
+        chests.append(chest)
+        while chests.filter({ $0.family == chest.family }).count > limit {
+            guard let index = chests.firstIndex(where: { $0.family == chest.family }) else { break }
+            chests.remove(at: index)
+        }
+    }
+
     mutating func removeFirst(kind: ChestKind) -> LootChest? {
         guard let index = chests.firstIndex(where: { $0.kind == kind }) else { return nil }
+        return chests.remove(at: index)
+    }
+
+    mutating func removeFirst(family: ChestFamily) -> LootChest? {
+        guard let index = chests.firstIndex(where: { $0.family == family }) else { return nil }
         return chests.remove(at: index)
     }
 
@@ -1004,25 +1044,28 @@ struct StageDefinition: Identifiable, Codable, Equatable {
     4310	TORMENT	95	0	0	198300	7826	3550	执政官莫尔卡
     """
 
-    func spawnMonster(difficulty: Difficulty, encounterIndex: Int = 0) -> Monster {
+    func spawnMonster(difficulty: Difficulty, encounterIndex: Int = 0, playthrough: Int = 1) -> Monster {
         let data = runtimeData(for: difficulty)
         let spawn = monsterSpawn(for: difficulty, encounterIndex: encounterIndex)
         let monsterName = spawn.name
         let base = monsterProfile(named: monsterName)
         let levelScale = 1.0 + Double(max(data.level - 1, 0)) * 0.08
+        let enemyMultiplier = NewGamePlusTuning.enemyStatMultiplier(for: playthrough)
+        let rewardMultiplier = NewGamePlusTuning.rewardMultiplier(for: playthrough)
 
         return Monster(
             id: isBoss ? "boss_\(id)" : base.id,
             name: monsterName,
-            hp: max(1, data.hp),
-            atk: max(1, Int(Double(base.atk) * difficulty.statMultiplier * levelScale * (isBoss ? 1.45 : 1.0))),
-            def: max(0, Int(Double(base.def) * difficulty.statMultiplier * levelScale * (isBoss ? 1.35 : 1.0))),
+            hp: max(1, Int(Double(data.hp) * enemyMultiplier)),
+            atk: max(1, Int(Double(base.atk) * difficulty.statMultiplier * levelScale * (isBoss ? 1.45 : 1.0) * enemyMultiplier)),
+            def: max(0, Int(Double(base.def) * difficulty.statMultiplier * levelScale * (isBoss ? 1.35 : 1.0) * enemyMultiplier)),
             spd: base.spd,
             critRate: base.critRate,
-            xpReward: max(1, data.xpReward),
-            goldReward: max(1, data.goldReward),
+            xpReward: max(1, Int(Double(data.xpReward) * rewardMultiplier)),
+            goldReward: max(1, Int(Double(data.goldReward) * rewardMultiplier)),
             lootTableID: base.lootTableID,
-            itemLevelCap: itemLevelCap(for: difficulty)
+            itemLevelCap: itemLevelCap(for: difficulty),
+            sourceSkillID: sourceSkillID(forMonsterNamed: monsterName) ?? base.sourceSkillID
         )
     }
 
@@ -1108,5 +1151,20 @@ struct StageDefinition: Identifiable, Codable, Equatable {
             break
         }
         return Monster.allMonsters.first { $0.id == "slime_green" } ?? Monster.allMonsters[0]
+    }
+
+    private func sourceSkillID(forMonsterNamed name: String) -> String? {
+        switch name {
+        case "燃烧的地狱祭司":
+            return "301015"
+        case "冰冻的地狱祭司":
+            return "301025"
+        case "电流的地狱祭司":
+            return "301035"
+        case "混沌的地狱祭司":
+            return "301045"
+        default:
+            return nil
+        }
     }
 }

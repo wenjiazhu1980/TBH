@@ -1,0 +1,12 @@
+resourceName	event	provenance	officialAudio	sampleRate	channels	bitDepth	durationSeconds	sha256	bytes	note
+sfx_battle_lost	battleLost	generated_substitute	false	22050	1	16	0.310	04fff1f0fee677567c1f1fdbba29a7a131f1aa50f659aef879803ef3ddd981fb	13714	local generated defeat cue; not extracted from original TBH
+sfx_battle_won	battleWon	generated_substitute	false	22050	1	16	0.340	bf354b9d63e0c4549ad91fa963cf0f534d6e703352ae24621eae5b472fb9883e	15038	local generated victory cue; not extracted from original TBH
+sfx_hero_attack	heroAttack	generated_substitute	false	22050	1	16	0.110	8f5e86a863ce233071f090be9738d609ee458c301d12ec4f0def761b22433f4c	4894	local generated attack cue; not extracted from original TBH
+sfx_hero_critical_hit	heroCriticalHit	generated_substitute	false	22050	1	16	0.160	74df9981af4ea217d873859d399bcade39345d6ad49dbefb73c33c46fbc9f1a4	7100	local generated critical-hit cue; not extracted from original TBH
+sfx_hero_damaged	heroDamaged	generated_substitute	false	22050	1	16	0.150	aa621d5a9b47292675a5293a03627d80c7bcee308ec1c1d5776496dee9e3c053	6658	local generated damage cue; not extracted from original TBH
+sfx_item_consumed	itemConsumed	generated_substitute	false	22050	1	16	0.170	43fbec3874ab42e189f0e6ceb16e09d580352180b37e3e33b729d3c6082d8ef3	7540	local generated item-consumed cue; not extracted from original TBH
+sfx_item_equipped	itemEquipped	generated_substitute	false	22050	1	16	0.130	89480168daf2b4a58c7a019dbe04c1067e1eddcf528a79cec88058d7adb4f8f9	5776	local generated equip cue; not extracted from original TBH
+sfx_level_up	levelUp	generated_substitute	false	22050	1	16	0.360	9039f0ebcdf9526a644b21b59754e6754152e3ebaa866cb7576f003f117c6684	15920	local generated progression cue; not extracted from original TBH
+sfx_loot_found	lootFound	generated_substitute	false	22050	1	16	0.200	51962e681aeec36c03587a6607b18e51b949f02d664aa32a0480c60278fcbfbb	8864	local generated loot cue; not extracted from original TBH
+sfx_preview	preview	generated_substitute	false	22050	1	16	0.120	47c78df22dab398e49ad33b7317189722adfa0d670f21a607ea8cb4d4152155e	5336	local generated preview cue; not extracted from original TBH
+sfx_skill_cast	skillCast	generated_substitute	false	22050	1	16	0.220	6449fb6608f98ac87e078bdfb7f113bc42b34a6cc2f6cf6d944a36038f55e023	9746	local generated skill-cast cue; not extracted from original TBH

@@ -6,8 +6,13 @@ struct InventoryView: View {
     @ObservedObject var inventory: Inventory
     @ObservedObject var hero: Hero
     let cubeProgress: CubeProgress
+    let purchasedExpansionCount: Int
+    let nextExpansionCost: Int
+    let worseEquipmentHandling: WorseEquipmentHandling
     /// 装备动作交由 GameEngine 处理（旧装备会放回背包）
     let onEquip: (Item) -> Void
+    let onExpandInventory: () -> Void
+    let onWorseEquipmentHandlingChange: (WorseEquipmentHandling) -> Void
     let onInfuseIntoCube: (Item) -> Void
     let onAlchemize: (Item) -> Void
     let onSynthesize: (Rarity) -> Item?
@@ -24,6 +29,29 @@ struct InventoryView: View {
             HStack {
                 Text("背包 (\(inventory.items.count)/\(inventory.maxCapacity))")
                     .font(.system(size: 11, weight: .medium))
+                Button {
+                    onExpandInventory()
+                } label: {
+                    Label("+10", systemImage: "plus.square")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .disabled(hero.gold < nextExpansionCost)
+                .help("扩容 +10 格，消耗 \(nextExpansionCost.formatted()) G；已扩容 \(purchasedExpansionCount) 次")
+                Picker("", selection: Binding(
+                    get: { worseEquipmentHandling },
+                    set: { onWorseEquipmentHandlingChange($0) }
+                )) {
+                    ForEach(WorseEquipmentHandling.allCases) { handling in
+                        Label(handling.displayName, systemImage: handling.systemImage)
+                            .tag(handling)
+                    }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.mini)
+                .frame(width: 104)
+                .help("新获得的同槽位较差装备处理方式")
                 Spacer()
                 Label(cubeProgress.displayText, systemImage: "cube.fill")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))

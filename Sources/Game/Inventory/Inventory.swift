@@ -66,3 +66,44 @@ class Inventory: ObservableObject, Codable {
         _maxCapacity = Published(initialValue: Self.baseCapacity)
     }
 }
+
+enum InventoryExpansion {
+    static let slotBonus = 10
+    static let baseGoldCost = 50_000
+
+    static func normalizedCount(_ count: Int) -> Int {
+        max(0, count)
+    }
+
+    static func nextGoldCost(after purchasedExpansionCount: Int) -> Int {
+        baseGoldCost * (normalizedCount(purchasedExpansionCount) + 1)
+    }
+
+    static func maxCapacity(runeTree: RuneTree, purchasedExpansionCount: Int) -> Int {
+        runeTree.inventoryCapacity + normalizedCount(purchasedExpansionCount) * slotBonus
+    }
+}
+
+enum WorseEquipmentHandling: String, Codable, CaseIterable, Identifiable {
+    case keep
+    case alchemize
+    case discard
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .keep: return "保留较差"
+        case .alchemize: return "炼金较差"
+        case .discard: return "丢弃较差"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .keep: return "tray.full"
+        case .alchemize: return "dollarsign.circle"
+        case .discard: return "trash"
+        }
+    }
+}

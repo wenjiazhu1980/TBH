@@ -13,12 +13,21 @@ enum BattleSceneSnapshot {
         case shieldCharge
         case slamJump
         case earthquakeImpact
+        case earthquakeRockExplosion
         case shockwaveImpact
         case chaosBurst
+        case monsterFireIncoming
+        case monsterColdIncoming
+        case monsterLightningIncoming
+        case monsterChaosIncoming
         case healUtility
         case resurrectionUtility
         case shieldUtility
         case sacredBladeUtility
+        case swiftSurgeUtility
+        case quickLoaderUtility
+        case generalsCryUtility
+        case bloodlustUtility
         case playerStatusRow
         case playerStatusRowCrowded
     }
@@ -259,9 +268,7 @@ private enum BattleSceneSnapshotFixture {
             activeSkillSlotCount: 2
         )
 
-        #if DEBUG
         battle.activateBattleSceneSnapshotDeployables()
-        #endif
 
         switch fixture {
         case .playerStatusRow, .playerStatusRowCrowded:
@@ -366,6 +373,18 @@ private enum BattleSceneSnapshotFixture {
                     kind: .damage
                 )
             )
+        case .earthquakeRockExplosion:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .hero,
+                    damage: 777,
+                    isCrit: false,
+                    skillName: "大地强击岩石爆炸",
+                    kind: .damage,
+                    damageElement: .physical,
+                    delivery: .meleeAOE
+                )
+            )
         case .shockwaveImpact:
             battle.log.append(
                 BattleLogEntry(
@@ -385,6 +404,46 @@ private enum BattleSceneSnapshotFixture {
                     kind: .damage,
                     damageElement: .chaos,
                     delivery: .range
+                )
+            )
+        case .monsterFireIncoming:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .monster,
+                    damage: 777,
+                    isCrit: false,
+                    kind: .damage,
+                    damageElement: .fire
+                )
+            )
+        case .monsterColdIncoming:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .monster,
+                    damage: 777,
+                    isCrit: false,
+                    kind: .damage,
+                    damageElement: .cold
+                )
+            )
+        case .monsterLightningIncoming:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .monster,
+                    damage: 777,
+                    isCrit: false,
+                    kind: .damage,
+                    damageElement: .lightning
+                )
+            )
+        case .monsterChaosIncoming:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .monster,
+                    damage: 777,
+                    isCrit: false,
+                    kind: .damage,
+                    damageElement: .chaos
                 )
             )
         case .healUtility:
@@ -427,6 +486,46 @@ private enum BattleSceneSnapshotFixture {
                     kind: .buff
                 )
             )
+        case .swiftSurgeUtility:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .hero,
+                    damage: 0,
+                    isCrit: false,
+                    skillName: "迅捷觉醒",
+                    kind: .buff
+                )
+            )
+        case .quickLoaderUtility:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .hero,
+                    damage: 0,
+                    isCrit: false,
+                    skillName: "快速装填",
+                    kind: .buff
+                )
+            )
+        case .generalsCryUtility:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .hero,
+                    damage: 0,
+                    isCrit: false,
+                    skillName: "将军怒吼",
+                    kind: .buff
+                )
+            )
+        case .bloodlustUtility:
+            battle.log.append(
+                BattleLogEntry(
+                    attacker: .hero,
+                    damage: 0,
+                    isCrit: false,
+                    skillName: "嗜血",
+                    kind: .buff
+                )
+            )
         }
 
         return battle
@@ -458,13 +557,11 @@ private enum BattleSceneSnapshotFixture {
             activeSkillLoadouts: loadouts
         )
 
-        #if DEBUG
         if crowded {
             battle.activateCrowdedBattleStatusSnapshotBuffs()
         } else {
             battle.activateBattleStatusSnapshotBuffs()
         }
-        #endif
 
         return battle
     }

@@ -95,6 +95,9 @@ struct ProgressTracker: Codable {
     var highestUnlockedChapterIndex: Int = 0
     var highestUnlockedStageIndex: Int = 0
     var highestUnlockedDifficultyIndex: Int = 0
+    var playthrough: Int = 1
+    var completedPlaythroughs: Int = 0
+    var isAwaitingNewGamePlus: Bool = false
 
     var currentChapter: Chapter {
         Chapter(rawValue: currentChapterIndex + 1) ?? .forest
@@ -121,6 +124,22 @@ struct ProgressTracker: Codable {
 
     var highestUnlockedStageText: String {
         "\(highestUnlockedDifficulty.name) \(highestUnlockedStage.displayName)"
+    }
+
+    var playthroughText: String {
+        playthrough <= 1 ? "一周目" : "第 \(playthrough) 周目"
+    }
+
+    var nextPlaythroughText: String {
+        "第 \(playthrough + 1) 周目"
+    }
+
+    var newGamePlusEnemyMultiplier: Double {
+        NewGamePlusTuning.enemyStatMultiplier(for: playthrough)
+    }
+
+    var newGamePlusRewardMultiplier: Double {
+        NewGamePlusTuning.rewardMultiplier(for: playthrough)
     }
 
     var currentStageSelectionID: String {
@@ -203,7 +222,8 @@ struct ProgressTracker: Codable {
 
     /// 每次胜利调用：清完当前关推进到下一关；全 Act 通关后进入下一 Act；全难度通关后封顶。
     @discardableResult
-    mutating func advance() -> Bool {
+    mutating func advance(chestStorageLimits: ChestStorageLimits = .unlimited) -> Bool {
+        guard !isAwaitingNewGamePlus else { return false }
         killsInChapter += 1
         let clearedStage = currentStage
         let clearTarget = clearedStage.clearTarget(for: currentDifficulty)
@@ -218,12 +238,14 @@ struct ProgressTracker: Codable {
 
         recordClearedStage(clearedStage)
         for chest in clearedStage.chestRewards(for: currentDifficulty) {
-            chests.add(chest)
+            chests.add(chest, limits: chestStorageLimits)
         }
 
         if isAtFinalContent {
-            // 终局内容：停留并封顶计数，防止数值无限增长
+            // 终局内容：停留在结算页，等待玩家选择是否开启下一周目。
             killsInChapter = clearTarget
+            isAwaitingNewGamePlus = true
+            completedPlaythroughs = max(completedPlaythroughs, playthrough)
             updateHighestUnlockedIfNeeded()
             return true
         }
@@ -248,11 +270,30 @@ struct ProgressTracker: Codable {
     }
 
     @discardableResult
-    mutating func advance(by encountersCleared: Int) -> Bool {
+    mutating func startNextPlaythrough() -> Bool {
+        guard isAwaitingNewGamePlus else { return false }
+
+        completedPlaythroughs = max(completedPlaythroughs, playthrough)
+        playthrough += 1
+        isAwaitingNewGamePlus = false
+        currentDifficultyIndex = 0
+        currentChapterIndex = 0
+        currentStageIndex = 0
+        highestUnlockedDifficultyIndex = 0
+        highestUnlockedChapterIndex = 0
+        highestUnlockedStageIndex = 0
+        killsInChapter = 0
+        chaptersCleared.removeAll()
+        stagesCleared.removeAll()
+        return true
+    }
+
+    @discardableResult
+    mutating func advance(by encountersCleared: Int, chestStorageLimits: ChestStorageLimits = .unlimited) -> Bool {
         guard encountersCleared > 0 else { return false }
         var clearedAnyStage = false
         for _ in 0..<encountersCleared {
-            clearedAnyStage = advance() || clearedAnyStage
+            clearedAnyStage = advance(chestStorageLimits: chestStorageLimits) || clearedAnyStage
         }
         return clearedAnyStage
     }
@@ -260,6 +301,13 @@ struct ProgressTracker: Codable {
     @discardableResult
     mutating func openChest(kind: ChestKind) -> LootChest? {
         guard let chest = chests.removeFirst(kind: kind) else { return nil }
+        soulStones.grant(chest.soulStoneDrop)
+        return chest
+    }
+
+    @discardableResult
+    mutating func openChest(family: ChestFamily) -> LootChest? {
+        guard let chest = chests.removeFirst(family: family) else { return nil }
         soulStones.grant(chest.soulStoneDrop)
         return chest
     }
@@ -327,6 +375,7 @@ struct ProgressTracker: Codable {
     }
 
     mutating func restartCurrentStage() {
+        guard !isAwaitingNewGamePlus else { return }
         killsInChapter = 0
     }
 
@@ -392,6 +441,7 @@ extension ProgressTracker {
         case currentChapterIndex, currentStageIndex, currentDifficultyIndex
         case soulStones, chests, chaptersCleared, stagesCleared, killsInChapter
         case highestUnlockedChapterIndex, highestUnlockedStageIndex, highestUnlockedDifficultyIndex
+        case playthrough, completedPlaythroughs, isAwaitingNewGamePlus
     }
 
     /// 兼容旧存档：currentStageIndex / stagesCleared / killsInChapter / high-water 字段缺失时取默认值。
@@ -426,11 +476,28 @@ extension ProgressTracker {
             try c.decodeIfPresent(Int.self, forKey: .highestUnlockedDifficultyIndex) ?? currentDifficultyIndex,
             upperBound: Difficulty.allCases.count - 1
         )
+        playthrough = max(1, try c.decodeIfPresent(Int.self, forKey: .playthrough) ?? 1)
+        completedPlaythroughs = max(0, try c.decodeIfPresent(Int.self, forKey: .completedPlaythroughs) ?? 0)
+        isAwaitingNewGamePlus = try c.decodeIfPresent(Bool.self, forKey: .isAwaitingNewGamePlus) ?? false
         updateHighestUnlockedIfNeeded()
     }
 
     private static func clamp(_ value: Int, upperBound: Int) -> Int {
         min(max(value, 0), upperBound)
+    }
+}
+
+enum NewGamePlusTuning {
+    static func completedCycles(before playthrough: Int) -> Int {
+        max(0, playthrough - 1)
+    }
+
+    static func enemyStatMultiplier(for playthrough: Int) -> Double {
+        1.0 + Double(completedCycles(before: playthrough)) * 0.35
+    }
+
+    static func rewardMultiplier(for playthrough: Int) -> Double {
+        1.0 + Double(completedCycles(before: playthrough)) * 0.25
     }
 }
 

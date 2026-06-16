@@ -7,11 +7,13 @@ struct SaveData: Codable {
     let party: HeroParty
     let runeTree: RuneTree
     let cubeProgress: CubeProgress
+    let purchasedInventoryExpansionCount: Int
     let activeSkillLoadouts: ActiveSkillLoadouts
     let inventory: Inventory
     let progress: ProgressTracker
     let statistics: GameStatistics
     let autoEquipBestItems: Bool
+    let worseEquipmentHandling: WorseEquipmentHandling
     let soundEffectsEnabled: Bool
     let unyieldingWillConsumedStageKey: String?
     let timestamp: Date
@@ -21,11 +23,13 @@ struct SaveData: Codable {
         party: HeroParty? = nil,
         runeTree: RuneTree? = nil,
         cubeProgress: CubeProgress = CubeProgress(),
+        purchasedInventoryExpansionCount: Int = 0,
         activeSkillLoadouts: ActiveSkillLoadouts = ActiveSkillLoadouts(),
         inventory: Inventory,
         progress: ProgressTracker,
         statistics: GameStatistics,
         autoEquipBestItems: Bool = false,
+        worseEquipmentHandling: WorseEquipmentHandling = .keep,
         soundEffectsEnabled: Bool = true,
         unyieldingWillConsumedStageKey: String? = nil,
         timestamp: Date
@@ -40,19 +44,24 @@ struct SaveData: Codable {
         self.party = resolvedParty
         self.runeTree = resolvedRuneTree
         self.cubeProgress = cubeProgress
+        self.purchasedInventoryExpansionCount = InventoryExpansion.normalizedCount(purchasedInventoryExpansionCount)
         self.activeSkillLoadouts = activeSkillLoadouts
-        inventory.setMaxCapacity(resolvedRuneTree.inventoryCapacity)
+        inventory.setMaxCapacity(InventoryExpansion.maxCapacity(
+            runeTree: resolvedRuneTree,
+            purchasedExpansionCount: self.purchasedInventoryExpansionCount
+        ))
         self.inventory = inventory
         self.progress = progress
         self.statistics = statistics
         self.autoEquipBestItems = autoEquipBestItems
+        self.worseEquipmentHandling = worseEquipmentHandling
         self.soundEffectsEnabled = soundEffectsEnabled
         self.unyieldingWillConsumedStageKey = unyieldingWillConsumedStageKey
         self.timestamp = timestamp
     }
 
     enum CodingKeys: String, CodingKey {
-        case hero, party, runeTree, cubeProgress, activeSkillLoadouts, inventory, progress, statistics, autoEquipBestItems, soundEffectsEnabled, unyieldingWillConsumedStageKey, timestamp
+        case hero, party, runeTree, cubeProgress, purchasedInventoryExpansionCount, activeSkillLoadouts, inventory, progress, statistics, autoEquipBestItems, worseEquipmentHandling, soundEffectsEnabled, unyieldingWillConsumedStageKey, timestamp
     }
 
     init(from decoder: Decoder) throws {
@@ -68,12 +77,19 @@ struct SaveData: Codable {
         resolvedParty.setUnlockedSlotCount(runeTree.unlockedPartySlotCount)
         party = resolvedParty
         cubeProgress = try c.decodeIfPresent(CubeProgress.self, forKey: .cubeProgress) ?? CubeProgress()
+        purchasedInventoryExpansionCount = InventoryExpansion.normalizedCount(
+            try c.decodeIfPresent(Int.self, forKey: .purchasedInventoryExpansionCount) ?? 0
+        )
         activeSkillLoadouts = try c.decodeIfPresent(ActiveSkillLoadouts.self, forKey: .activeSkillLoadouts) ?? ActiveSkillLoadouts()
         inventory = try c.decode(Inventory.self, forKey: .inventory)
-        inventory.setMaxCapacity(runeTree.inventoryCapacity)
+        inventory.setMaxCapacity(InventoryExpansion.maxCapacity(
+            runeTree: runeTree,
+            purchasedExpansionCount: purchasedInventoryExpansionCount
+        ))
         progress = try c.decode(ProgressTracker.self, forKey: .progress)
         statistics = try c.decode(GameStatistics.self, forKey: .statistics)
         autoEquipBestItems = try c.decodeIfPresent(Bool.self, forKey: .autoEquipBestItems) ?? false
+        worseEquipmentHandling = try c.decodeIfPresent(WorseEquipmentHandling.self, forKey: .worseEquipmentHandling) ?? .keep
         soundEffectsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? true
         unyieldingWillConsumedStageKey = try c.decodeIfPresent(String.self, forKey: .unyieldingWillConsumedStageKey)
         timestamp = try c.decode(Date.self, forKey: .timestamp)

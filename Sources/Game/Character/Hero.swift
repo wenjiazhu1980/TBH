@@ -89,33 +89,42 @@ class Hero: ObservableObject, Codable {
     @Published var gold: Int = 0
     @Published var currentHP: Int = 100
     @Published var equipment: EquipmentLoadout = EquipmentLoadout()
+    @Published var unlockedPassiveSkillIDs: Set<String> = []
 
     var isAlive: Bool { currentHP > 0 }
 
     var baseStats: BaseStats { heroClass.baseStats }
 
+    var passiveRuntimeEffects: PassiveSkillRuntimeEffects {
+        PassiveSkillRuntimeEffects.make(unlockedSkillIDs: unlockedPassiveSkillIDs, heroClass: heroClass)
+    }
+
     var maxHP: Int {
-        baseStats.hp + max(level - 1, 0) * 10 + equipment.bonusHP
+        let baseValue = baseStats.hp + max(level - 1, 0) * 10 + equipment.bonusHP + passiveRuntimeEffects.passiveMaxHp
+        return max(1, Int(ceil(Double(baseValue) * passiveRuntimeEffects.passiveMaxHpMultiplier)))
     }
 
     var attack: Int {
-        baseStats.atk + max(level - 1, 0) * 2 + equipment.bonusATK
+        let baseValue = baseStats.atk + max(level - 1, 0) * 2 + equipment.bonusATK + passiveRuntimeEffects.passiveAttackDamage
+        return max(1, Int(ceil(Double(baseValue) * passiveRuntimeEffects.passiveAttackDamageMultiplier)))
     }
 
     var defense: Int {
-        baseStats.def + max(level - 1, 0) + equipment.bonusDEF
+        max(0, baseStats.def + max(level - 1, 0) + equipment.bonusDEF + passiveRuntimeEffects.passiveArmor)
     }
 
     var speed: Int {
-        baseStats.spd + equipment.bonusSPD
+        let effects = passiveRuntimeEffects
+        let baseValue = baseStats.spd + equipment.bonusSPD + effects.passiveMovementSpeed
+        return max(1, Int(ceil(Double(baseValue) * effects.passiveAttackSpeedMultiplier * effects.passiveMovementSpeedMultiplier)))
     }
 
     var critRate: Double {
-        min(baseStats.critRate + equipment.bonusCritRate, 1.0)
+        min(max(baseStats.critRate + equipment.bonusCritRate + passiveRuntimeEffects.passiveCriticalChance, 0), 1.0)
     }
 
     var critDamage: Double {
-        baseStats.critDamage + equipment.bonusCritDamage
+        max(1.0, baseStats.critDamage + equipment.bonusCritDamage + passiveRuntimeEffects.passiveCriticalDamage)
     }
 
     func xpForNextLevel() -> Int {
@@ -168,7 +177,7 @@ class Hero: ObservableObject, Codable {
     // MARK: - Codable
 
     enum CodingKeys: String, CodingKey {
-        case name, heroClass, level, currentXP, gold, currentHP, equipment
+        case name, heroClass, level, currentXP, gold, currentHP, equipment, unlockedPassiveSkillIDs
     }
 
     required init(from decoder: Decoder) throws {
@@ -180,6 +189,7 @@ class Hero: ObservableObject, Codable {
         _gold = Published(initialValue: try c.decode(Int.self, forKey: .gold))
         _currentHP = Published(initialValue: try c.decode(Int.self, forKey: .currentHP))
         _equipment = Published(initialValue: try c.decode(EquipmentLoadout.self, forKey: .equipment))
+        _unlockedPassiveSkillIDs = Published(initialValue: try c.decodeIfPresent(Set<String>.self, forKey: .unlockedPassiveSkillIDs) ?? [])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -191,6 +201,7 @@ class Hero: ObservableObject, Codable {
         try c.encode(gold, forKey: .gold)
         try c.encode(currentHP, forKey: .currentHP)
         try c.encode(equipment, forKey: .equipment)
+        try c.encode(unlockedPassiveSkillIDs, forKey: .unlockedPassiveSkillIDs)
     }
 
     init() {

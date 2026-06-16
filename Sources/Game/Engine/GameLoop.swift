@@ -8,6 +8,7 @@ class GameEngine: ObservableObject {
     @Published var party: HeroParty
     @Published var runeTree: RuneTree
     @Published var cubeProgress: CubeProgress
+    @Published var purchasedInventoryExpansionCount: Int
     @Published var activeSkillLoadouts: ActiveSkillLoadouts
     @Published var currentBattle: Battle?
     @Published var battleLockReason: String?
@@ -15,6 +16,7 @@ class GameEngine: ObservableObject {
     @Published var progress: ProgressTracker
     @Published var statistics: GameStatistics
     @Published var autoEquipBestItems: Bool
+    @Published var worseEquipmentHandling: WorseEquipmentHandling
     @Published var soundEffectsEnabled: Bool {
         didSet {
             audio.isEnabled = soundEffectsEnabled
@@ -37,12 +39,14 @@ class GameEngine: ObservableObject {
         self.party = HeroParty()
         self.runeTree = RuneTree()
         self.cubeProgress = CubeProgress()
+        self.purchasedInventoryExpansionCount = 0
         self.activeSkillLoadouts = ActiveSkillLoadouts()
         self.battleLockReason = nil
         self.inventory = Inventory()
         self.progress = ProgressTracker()
         self.statistics = GameStatistics()
         self.autoEquipBestItems = false
+        self.worseEquipmentHandling = .keep
         self.soundEffectsEnabled = true
         self.saveManager = saveManager
         self.audio = audio
@@ -110,13 +114,24 @@ class GameEngine: ObservableObject {
 
         if let battle = currentBattle, battle.isOver {
             handleBattleResult(battle.result)
-            startNextBattle()
+            if progress.isAwaitingNewGamePlus {
+                currentBattle = nil
+                battleLockReason = nil
+            } else {
+                startNextBattle()
+            }
         }
     }
 
     // MARK: - Battle
 
     private func startNextBattle() {
+        if progress.isAwaitingNewGamePlus {
+            battleLockReason = nil
+            currentBattle = nil
+            return
+        }
+
         if let lockReason = progress.stageLockReason {
             battleLockReason = lockReason
             currentBattle = nil
@@ -132,7 +147,8 @@ class GameEngine: ObservableObject {
         let monsters = plannedEncounters.map {
             progress.currentStage.spawnMonster(
                 difficulty: progress.currentDifficulty,
-                encounterIndex: $0.encounterIndex
+                encounterIndex: $0.encounterIndex,
+                playthrough: progress.playthrough
             )
         }
         let stageRevivalKey = currentStageRevivalKey
@@ -172,7 +188,7 @@ class GameEngine: ObservableObject {
             if lootStoredCount > 0 {
                 audio.play(.lootFound)
             }
-            _ = progress.advance(by: rewards.encountersCleared)
+            _ = progress.advance(by: rewards.encountersCleared, chestStorageLimits: runeTree.chestStorageLimits)
             statistics.recordVictory(
                 rewards: rewards,
                 lootStoredCount: lootStoredCount,
@@ -180,6 +196,7 @@ class GameEngine: ObservableObject {
                 difficulty: clearedDifficulty,
                 stage: clearedStage
             )
+            autoOpenEligibleChests()
 
         case .defeat:
             statistics.recordDefeat()
@@ -231,6 +248,11 @@ class GameEngine: ObservableObject {
         save()
     }
 
+    func setWorseEquipmentHandling(_ handling: WorseEquipmentHandling) {
+        worseEquipmentHandling = handling
+        save()
+    }
+
     func setSoundEffectsEnabled(_ enabled: Bool) {
         soundEffectsEnabled = enabled
         save()
@@ -243,6 +265,7 @@ class GameEngine: ObservableObject {
 
         inventory.remove(item)
         let gainedExperience = cubeProgress.infuse(item)
+        audio.play(.itemConsumed)
         save()
         return gainedExperience
     }
@@ -255,6 +278,7 @@ class GameEngine: ObservableObject {
         inventory.remove(item)
         let gainedGold = item.rarity.alchemyGoldValue
         hero.gainGold(gainedGold)
+        audio.play(.itemConsumed)
         save()
         return gainedGold
     }
@@ -291,6 +315,27 @@ class GameEngine: ObservableObject {
 
     func previewSoundEffect() {
         audio.play(.preview)
+    }
+
+    var nextInventoryExpansionGoldCost: Int {
+        InventoryExpansion.nextGoldCost(after: purchasedInventoryExpansionCount)
+    }
+
+    func canPurchaseInventoryExpansion() -> Bool {
+        hero.gold >= nextInventoryExpansionGoldCost
+    }
+
+    @discardableResult
+    func purchaseInventoryExpansion() -> Bool {
+        let cost = nextInventoryExpansionGoldCost
+        guard hero.gold >= cost else { return false }
+
+        hero.gold -= cost
+        purchasedInventoryExpansionCount += 1
+        applyRuneTreeUnlocks()
+        audio.play(.itemConsumed)
+        save()
+        return true
     }
 
     func setHeroClass(_ heroClass: HeroClass) {
@@ -332,10 +377,20 @@ class GameEngine: ObservableObject {
     }
 
     @discardableResult
+    func startNextPlaythrough() -> Bool {
+        guard progress.startNextPlaythrough() else { return false }
+        unyieldingWillConsumedStageKey = nil
+        startNextBattle()
+        save()
+        return true
+    }
+
+    @discardableResult
     func unlockRuneTreeNode(_ node: RuneTreeNode) -> Bool {
         guard runeTree.unlock(node, heroLevel: hero.level, availableGold: hero.gold) else { return false }
         hero.gold -= node.goldCost
         applyRuneTreeUnlocks()
+        autoOpenEligibleChests()
         startNextBattle()
         save()
         return true
@@ -405,6 +460,13 @@ class GameEngine: ObservableObject {
     }
 
     @discardableResult
+    private func openChest(family: ChestFamily) -> Bool {
+        guard let chest = progress.openChest(family: family) else { return false }
+        retainOpenedChest(chest)
+        return true
+    }
+
+    @discardableResult
     func openChests(kind: ChestKind) -> Int {
         guard runeTree.canOpenOneChestTypeAtOnce else { return 0 }
         let chestIDs = progress.chests.chests
@@ -432,6 +494,31 @@ class GameEngine: ObservableObject {
         return openedCount
     }
 
+    @discardableResult
+    private func autoOpenEligibleChests() -> Int {
+        var openedCount = 0
+
+        if runeTree.canAutoOpenNormalChests {
+            while openChest(family: .normalMonster) {
+                openedCount += 1
+            }
+        }
+
+        if runeTree.canAutoOpenStageBossChests {
+            while openChest(family: .stageBoss) {
+                openedCount += 1
+            }
+        }
+
+        if runeTree.canAutoOpenActBossChests {
+            while openChest(family: .actBoss) {
+                openedCount += 1
+            }
+        }
+
+        return openedCount
+    }
+
     private func retainOpenedChest(_ chest: LootChest) {
         let item = LootTable.roll(for: chest)
         let lootStored = retainLoot(item)
@@ -449,6 +536,10 @@ class GameEngine: ObservableObject {
         guard let item else { return false }
 
         if autoEquipBestItems, autoEquipLootItemIfBetter(item) {
+            return true
+        }
+
+        if handleWorseEquipmentLoot(item) {
             return true
         }
 
@@ -475,9 +566,27 @@ class GameEngine: ObservableObject {
         return true
     }
 
+    private func handleWorseEquipmentLoot(_ item: Item) -> Bool {
+        guard worseEquipmentHandling != .keep else { return false }
+        guard let slot = item.slot else { return false }
+        guard !item.isBetterEquipment(than: hero.equipment.item(in: slot)) else { return false }
+
+        switch worseEquipmentHandling {
+        case .keep:
+            return false
+        case .alchemize:
+            hero.gainGold(item.rarity.alchemyGoldValue)
+            audio.play(.itemConsumed)
+            return true
+        case .discard:
+            return true
+        }
+    }
+
     // MARK: - Offline Progress
 
     private func calculateOfflineProgress() {
+        guard !progress.isAwaitingNewGamePlus else { return }
         guard let lastSave = saveManager.lastSaveTimestamp else { return }
         let offlineSeconds = Date().timeIntervalSince(lastSave)
         guard offlineSeconds > 60 else { return }
@@ -508,11 +617,13 @@ class GameEngine: ObservableObject {
             party: party,
             runeTree: runeTree,
             cubeProgress: cubeProgress,
+            purchasedInventoryExpansionCount: purchasedInventoryExpansionCount,
             activeSkillLoadouts: activeSkillLoadouts,
             inventory: inventory,
             progress: progress,
             statistics: statistics,
             autoEquipBestItems: autoEquipBestItems,
+            worseEquipmentHandling: worseEquipmentHandling,
             soundEffectsEnabled: soundEffectsEnabled,
             unyieldingWillConsumedStageKey: unyieldingWillConsumedStageKey,
             timestamp: Date()
@@ -526,6 +637,7 @@ class GameEngine: ObservableObject {
         party = data.party
         runeTree = data.runeTree
         cubeProgress = data.cubeProgress
+        purchasedInventoryExpansionCount = InventoryExpansion.normalizedCount(data.purchasedInventoryExpansionCount)
         activeSkillLoadouts = data.activeSkillLoadouts
         party.setPrimaryClass(hero.heroClass)
         inventory = data.inventory
@@ -533,6 +645,7 @@ class GameEngine: ObservableObject {
         progress = data.progress
         statistics = data.statistics
         autoEquipBestItems = data.autoEquipBestItems
+        worseEquipmentHandling = data.worseEquipmentHandling
         soundEffectsEnabled = data.soundEffectsEnabled
         unyieldingWillConsumedStageKey = data.unyieldingWillConsumedStageKey
         if autoEquipBestItems {
@@ -546,12 +659,14 @@ class GameEngine: ObservableObject {
         hero = Hero()
         runeTree = RuneTree()
         cubeProgress = CubeProgress()
+        purchasedInventoryExpansionCount = 0
         activeSkillLoadouts = ActiveSkillLoadouts()
         party = HeroParty(primaryClass: hero.heroClass, unlockedSlotCount: runeTree.unlockedPartySlotCount)
         inventory = Inventory()
         progress = ProgressTracker()
         statistics = GameStatistics()
         autoEquipBestItems = false
+        worseEquipmentHandling = .keep
         soundEffectsEnabled = true
         unyieldingWillConsumedStageKey = nil
         battleLockReason = nil
@@ -569,7 +684,10 @@ class GameEngine: ObservableObject {
 
     private func applyRuneTreeUnlocks() {
         party.setUnlockedSlotCount(runeTree.unlockedPartySlotCount)
-        inventory.setMaxCapacity(runeTree.inventoryCapacity)
+        inventory.setMaxCapacity(InventoryExpansion.maxCapacity(
+            runeTree: runeTree,
+            purchasedExpansionCount: purchasedInventoryExpansionCount
+        ))
     }
 }
 
@@ -577,6 +695,11 @@ class GameEngine: ObservableObject {
 extension GameEngine {
     func runSelfTestTick() {
         tick()
+    }
+
+    @discardableResult
+    func retainLootForTesting(_ item: Item) -> Bool {
+        retainLoot(item)
     }
 }
 #endif

@@ -4,6 +4,7 @@ set -euo pipefail
 sprite_dir="${SPRITE_DIR:-Sources/Resources/Extracted}"
 skills_swift="${SKILLS_SWIFT:-Sources/Game/Character/Skills.swift}"
 game_art_swift="${GAME_ART_SWIFT:-Sources/UI/Components/GameArt.swift}"
+packaged_sprite_dir="${PACKAGED_SPRITE_DIR:-dist/TBH.app/Contents/Resources/TBH-macOS_TBH.bundle/Extracted}"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -201,3 +202,69 @@ if issues:
 
 print("local passive skill icon audit passed")
 PY
+
+if [[ "${AUDIT_LOCAL_PASSIVE_SKILL_ICONS_SKIP_PACKAGED:-0}" != "1" &&
+      -d "$packaged_sprite_dir" &&
+      "$sprite_dir" != "$packaged_sprite_dir" ]]; then
+  echo
+  echo "packaged_app_passive_skill_icon_audit"
+  echo "--------------------------------------"
+  SPRITE_DIR="$packaged_sprite_dir" \
+    SKILLS_SWIFT="$skills_swift" \
+    GAME_ART_SWIFT="$game_art_swift" \
+    AUDIT_LOCAL_PASSIVE_SKILL_ICONS_SKIP_PACKAGED=1 \
+    "$0"
+
+  python3 - "$sprite_dir" "$packaged_sprite_dir" "$skills_swift" "$game_art_swift" <<'PY'
+import hashlib
+import re
+import sys
+from pathlib import Path
+
+source_dir = Path(sys.argv[1])
+packaged_dir = Path(sys.argv[2])
+skills_path = Path(sys.argv[3])
+game_art_path = Path(sys.argv[4])
+
+skills_source = skills_path.read_text(encoding="utf-8")
+game_art_source = game_art_path.read_text(encoding="utf-8")
+if 'passiveSkillTSV = """' not in skills_source:
+    print(f"could not locate passiveSkillTSV in {skills_path}", file=sys.stderr)
+    sys.exit(2)
+
+expected = sorted(set(re.findall(r'"(source_passive_[A-Za-z0-9]+)"', game_art_source)))
+if not expected:
+    print(f"could not derive expected source_passive_* icons from {game_art_path}", file=sys.stderr)
+    sys.exit(2)
+
+issues = []
+for stem in expected:
+    name = f"{stem}.png"
+    source_path = source_dir / name
+    packaged_path = packaged_dir / name
+    if not source_path.is_file():
+        issues.append(f"source passive icon missing: {name}")
+        continue
+    if not packaged_path.is_file():
+        issues.append(f"packaged app passive icon missing: {name}")
+        continue
+    if hashlib.sha256(source_path.read_bytes()).hexdigest() != hashlib.sha256(packaged_path.read_bytes()).hexdigest():
+        issues.append(f"packaged app passive icon differs from source: {name}")
+
+extra_packaged = sorted(
+    path.stem
+    for path in packaged_dir.glob("source_passive_*.png")
+    if path.stem not in expected
+)
+for stem in extra_packaged:
+    issues.append(f"packaged app has unexpected passive icon resource: {stem}.png")
+
+if issues:
+    print("packaged app passive icon payload issues:")
+    for issue in issues:
+        print(f"- {issue}")
+    sys.exit(1)
+
+print(f"packaged_app_passive_skill_icon_payload_match=checked icons:{len(expected)}")
+PY
+fi

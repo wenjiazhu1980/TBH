@@ -226,6 +226,10 @@ struct SourceGearLevelProgression: Equatable, Identifiable {
     let id: String
     let itemLevel: Int
     let name: String
+
+    var iconName: String {
+        "source_gear_\(id)"
+    }
 }
 
 enum SourceMaterialCategory: String, CaseIterable, Hashable {

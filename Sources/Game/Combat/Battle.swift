@@ -211,6 +211,12 @@ private struct ActiveSupportSkillBuff: Identifiable, Equatable {
     }
 }
 
+private enum GroundSlamRockScaffold {
+    static let maxCharges = 3
+    static let explosionSkillName = "大地强击岩石爆炸"
+    static let explosionDamageMultiplier = 1.0
+}
+
 private enum BattlePartyTarget {
     case hero
     case support(Int)
@@ -236,6 +242,7 @@ class Battle: ObservableObject {
     @Published private(set) var monster: Monster
     @Published private(set) var enemyStates: [BattleEnemyState]
     @Published private(set) var supportStates: [BattleSupportState]
+    @Published private(set) var groundSlamRockCharges: Int = 0
     var currentMonsterNumber: Int { min(max(currentMonsterIndex + 1, 1), monsterCount) }
     var monsterCount: Int { monsters.count }
     var waveMonsters: [Monster] { monsters }
@@ -373,6 +380,7 @@ class Battle: ObservableObject {
         tickEnemyStatusEffects(deltaTime: deltaTime)
         tickSkillCooldowns(deltaTime: deltaTime)
         tickActiveHeroBuffs(deltaTime: deltaTime)
+        applyPassiveHpRegen(deltaTime: deltaTime)
 
         if applyCooldownHeroSkillIfReady() {
             if isOver { return }
@@ -390,7 +398,7 @@ class Battle: ObservableObject {
                 critRate: modifiedHeroCritRate,
                 critDamage: hero.critDamage
             )
-            let defeated = damageFocusedEnemy(hit.amount)
+            let defeated = damageFocusedEnemy(hit.amount, leechForHero: true)
             log.append(BattleLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
@@ -404,6 +412,7 @@ class Battle: ObservableObject {
             applyHeroAttackDamageBuffEffects()
             if isOver { return }
             applyHeroOnHitBuffEffects()
+            applyPassiveAddHpPerHit()
             consumeHeroAttackBuffCharges()
 
             if defeated {
@@ -428,7 +437,32 @@ class Battle: ObservableObject {
             guard !enemyStates[index].isDefeated, enemyCooldowns[index] <= 0 else { continue }
 
             let attackingMonster = enemyStates[index].monster
+            let attackElement = attackingMonster.sourceDamageElement
+            let attackDelivery = attackingMonster.sourceDelivery
             let target = nextEnemyAttackTarget()
+            if incomingAttackWasDodged(damageElement: attackElement) {
+                log.append(BattleLogEntry(
+                    attacker: .monster,
+                    damage: 0,
+                    isCrit: false,
+                    damageElement: attackElement,
+                    delivery: attackDelivery
+                ))
+                enemyCooldowns[index] = attackInterval(for: attackingMonster)
+                continue
+            }
+            if incomingAttackWasBlocked() {
+                log.append(BattleLogEntry(
+                    attacker: .monster,
+                    damage: 0,
+                    isCrit: false,
+                    damageElement: attackElement,
+                    delivery: attackDelivery
+                ))
+                enemyCooldowns[index] = attackInterval(for: attackingMonster)
+                continue
+            }
+
             switch target {
             case .hero:
                 let hit = DamageCalculator.calculateResult(
@@ -437,10 +471,16 @@ class Battle: ObservableObject {
                     critRate: attackingMonster.critRate,
                     critDamage: 1.5
                 )
-                let damage = absorbIncomingDamage(modifiedIncomingDamage(hit.amount))
+                let damage = absorbIncomingDamage(modifiedIncomingDamage(hit.amount, damageElement: attackElement))
                 hero.takeDamage(damage)
                 heroHP = hero.currentHP  // 单一事实来源：以英雄实际 HP 为准
-                log.append(BattleLogEntry(attacker: .monster, damage: damage, isCrit: hit.isCrit))
+                log.append(BattleLogEntry(
+                    attacker: .monster,
+                    damage: damage,
+                    isCrit: hit.isCrit,
+                    damageElement: attackElement,
+                    delivery: attackDelivery
+                ))
                 onEvent?(.heroDamaged(isCrit: hit.isCrit))
 
             case .support(let supportIndex):
@@ -452,9 +492,15 @@ class Battle: ObservableObject {
                     critRate: attackingMonster.critRate,
                     critDamage: 1.5
                 )
-                let damage = absorbIncomingDamage(modifiedIncomingDamage(hit.amount))
+                let damage = absorbIncomingDamage(modifiedIncomingDamage(hit.amount, damageElement: attackElement))
                 _ = damageSupportMember(slotIndex: targetState.slotIndex, amount: damage)
-                log.append(BattleLogEntry(attacker: .monster, damage: damage, isCrit: hit.isCrit))
+                log.append(BattleLogEntry(
+                    attacker: .monster,
+                    damage: damage,
+                    isCrit: hit.isCrit,
+                    damageElement: attackElement,
+                    delivery: attackDelivery
+                ))
             }
             enemyCooldowns[index] = attackInterval(for: attackingMonster)
 
@@ -554,6 +600,7 @@ class Battle: ObservableObject {
             accumulatedLoot.append(loot)
         }
         encountersCleared += 1
+        applyPassiveAddHpPerKill()
 
         guard enemyStates.contains(where: { !$0.isDefeated }) else {
             endBattle(victory: true)
@@ -565,21 +612,26 @@ class Battle: ObservableObject {
     }
 
     @discardableResult
-    private func damageFocusedEnemy(_ amount: Int) -> Bool {
+    private func damageFocusedEnemy(_ amount: Int, leechForHero: Bool = false) -> Bool {
         guard let index = focusedEnemyArrayIndex else { return false }
-        return damageEnemy(at: index, amount: amount)
+        return damageEnemy(at: index, amount: amount, leechForHero: leechForHero)
     }
 
     @discardableResult
-    private func damageEnemy(at index: Int, amount: Int) -> Bool {
+    private func damageEnemy(at index: Int, amount: Int, leechForHero: Bool = false) -> Bool {
         guard enemyStates.indices.contains(index), !enemyStates[index].isDefeated else { return false }
         var updatedState = enemyStates[index]
-        updatedState.hp = max(0, updatedState.hp - amount)
+        let hpBefore = updatedState.hp
+        updatedState.hp = max(0, hpBefore - amount)
+        let appliedDamage = max(0, hpBefore - updatedState.hp)
         enemyStates[index] = updatedState
         if focusedEnemyArrayIndex == index {
             currentMonsterIndex = updatedState.index
             monster = updatedState.monster
             monsterHP = updatedState.hp
+        }
+        if leechForHero {
+            applyPassiveHpLeech(fromDamage: appliedDamage)
         }
         return updatedState.hp <= 0
     }
@@ -612,7 +664,7 @@ class Battle: ObservableObject {
                 critRate: sourceCritRate,
                 critDamage: sourceCritDamage
             )
-            if damageEnemy(at: index, amount: hit.amount) {
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: attacker == .hero) {
                 shockwaveDefeats.append(index)
             }
             log.append(BattleLogEntry(
@@ -639,6 +691,50 @@ class Battle: ObservableObject {
         currentMonsterIndex = enemyStates[index].index
         monster = enemyStates[index].monster
         monsterHP = enemyStates[index].hp
+    }
+
+    private func aliveEnemyIndices() -> [Int] {
+        enemyStates.indices.filter { index in
+            !enemyStates[index].isDefeated && enemyStates[index].hp > 0
+        }
+    }
+
+    private func focusedSkillTargetIndices(for skill: Skill) -> [Int] {
+        let aliveIndices = aliveEnemyIndices()
+        guard !aliveIndices.isEmpty else { return [] }
+
+        let focusedIndex = focusedEnemyArrayIndex ?? aliveIndices[0]
+        var targetIndices = [focusedIndex]
+
+        guard skill.damageMultiplier > 0 else {
+            return targetIndices
+        }
+
+        let extraTargetCount = passiveExtraTargetCount(for: skill)
+        guard extraTargetCount > 0 else { return targetIndices }
+
+        for index in aliveIndices where index != focusedIndex {
+            targetIndices.append(index)
+            if targetIndices.count >= 1 + extraTargetCount {
+                break
+            }
+        }
+        return targetIndices
+    }
+
+    private func passiveExtraTargetCount(for skill: Skill) -> Int {
+        let effects = hero.passiveRuntimeEffects
+        let expansion: Double
+
+        if [.melee, .projectile, .range, .summonProjectile].contains(skill.delivery) {
+            expansion = effects.passiveSkillRangeExpansion
+        } else if [.meleeAOE, .projectileAOE, .rangeAOE, .trap].contains(skill.delivery) {
+            expansion = effects.passiveAreaOfEffect
+        } else {
+            expansion = 0
+        }
+
+        return Int(floor(max(0, expansion) / 0.30 + 0.0001))
     }
 
     private func attackInterval(for monster: Monster) -> TimeInterval {
@@ -759,8 +855,174 @@ class Battle: ObservableObject {
         max(1, Int(ceil(Double(max(0, attack)) * continuousAttackMultiplier)))
     }
 
-    private func modifiedIncomingDamage(_ damage: Int) -> Int {
-        max(1, Int(Double(max(0, damage)) * continuousIncomingDamageMultiplier))
+    private func modifiedIncomingDamage(_ damage: Int, damageElement: SkillDamageElement = .none) -> Int {
+        let passiveEffects = hero.passiveRuntimeEffects
+        return Self.modifiedIncomingDamage(
+            damage,
+            continuousIncomingDamageMultiplier: continuousIncomingDamageMultiplier,
+            passiveDamageReduction: passiveEffects.passiveDamageReduction,
+            passiveDamageAbsorption: passiveEffects.passiveDamageAbsorption,
+            passiveAllElementalResistance: passiveEffects.passiveAllElementalResistance,
+            damageElement: damageElement
+        )
+    }
+
+    static func modifiedIncomingDamage(
+        _ damage: Int,
+        continuousIncomingDamageMultiplier: Double,
+        passiveDamageReduction: Double,
+        passiveDamageAbsorption: Int,
+        passiveAllElementalResistance: Double = 0,
+        damageElement: SkillDamageElement = .none
+    ) -> Int {
+        let damageReduction = min(max(passiveDamageReduction, 0), 0.9)
+        let elementalResistance = damageElement.isElemental ? min(max(passiveAllElementalResistance, 0), 0.9) : 0
+        let scaledDamage = Int(
+            Double(max(0, damage)) *
+                continuousIncomingDamageMultiplier *
+                (1.0 - damageReduction) *
+                (1.0 - elementalResistance)
+        )
+        return max(1, scaledDamage - max(0, passiveDamageAbsorption))
+    }
+
+    private func incomingAttackWasDodged(damageElement: SkillDamageElement = .none) -> Bool {
+        let passiveEffects = hero.passiveRuntimeEffects
+        return Self.incomingAttackWasDodged(
+            roll: Double.random(in: 0..<1),
+            passiveDodgeChance: passiveEffects.passiveDodgeChance,
+            passiveMaxDodgeChance: passiveEffects.passiveMaxDodgeChance,
+            passiveElementalDodgeChance: passiveEffects.passiveElementalDodgeChance,
+            damageElement: damageElement
+        )
+    }
+
+    static func incomingAttackWasDodged(
+        roll: Double,
+        passiveDodgeChance: Double,
+        passiveMaxDodgeChance: Double = 0,
+        passiveElementalDodgeChance: Double = 0,
+        damageElement: SkillDamageElement = .none
+    ) -> Bool {
+        let dodgeCap = min(0.95, 0.8 + max(0, passiveMaxDodgeChance))
+        let elementalDodgeChance = damageElement.isElemental ? max(0, passiveElementalDodgeChance) : 0
+        let dodgeChance = min(max(passiveDodgeChance, 0) + elementalDodgeChance, dodgeCap)
+        guard dodgeChance > 0 else { return false }
+        return min(max(roll, 0), 1) < dodgeChance
+    }
+
+    private func incomingAttackWasBlocked() -> Bool {
+        Self.incomingAttackWasBlocked(
+            roll: Double.random(in: 0..<1),
+            passiveBlockChance: hero.passiveRuntimeEffects.passiveBlockChance
+        )
+    }
+
+    static func incomingAttackWasBlocked(roll: Double, passiveBlockChance: Double) -> Bool {
+        let blockChance = min(max(passiveBlockChance, 0), 0.8)
+        guard blockChance > 0 else { return false }
+        return min(max(roll, 0), 1) < blockChance
+    }
+
+    static func modifiedSkillCooldown(
+        baseCooldown: TimeInterval,
+        passiveCooldownReduction: Double,
+        passiveCastSpeed: Double
+    ) -> TimeInterval {
+        let reduction = min(max(passiveCooldownReduction, 0), 0.8)
+        let castSpeedMultiplier = 1.0 + max(0, passiveCastSpeed)
+        return max(1, baseCooldown * (1.0 - reduction) / castSpeedMultiplier)
+    }
+
+    private func modifiedHeroSkillAttack(
+        for skill: Skill,
+        baseAttack: Int? = nil,
+        multiplierOverride: Double? = nil
+    ) -> Int {
+        let attack = baseAttack ?? modifiedHeroAttack
+        let multiplier = multiplierOverride ?? skill.damageMultiplier
+        return max(1, Int(Double(max(0, attack)) * multiplier * passiveSkillDamageMultiplier(for: skill)))
+    }
+
+    private func passiveSkillDamageMultiplier(for skill: Skill) -> Double {
+        let passiveEffects = hero.passiveRuntimeEffects
+        var multiplier = 1.0
+
+        switch skill.damageElement {
+        case .physical:
+            multiplier += passiveEffects.passivePhysicalDamagePercent
+        case .fire:
+            multiplier += passiveEffects.passiveFireDamagePercent
+        case .cold:
+            multiplier += passiveEffects.passiveColdDamagePercent
+        case .lightning:
+            multiplier += passiveEffects.passiveLightningDamagePercent
+        case .none, .chaos:
+            break
+        }
+
+        if [.projectile, .projectileAOE, .summonProjectile].contains(skill.delivery) {
+            multiplier += passiveEffects.passiveIncreaseProjectileDamage
+        }
+
+        if [.meleeAOE, .rangeAOE, .projectileAOE, .trap].contains(skill.delivery) {
+            multiplier += passiveEffects.passiveIncreaseAreaOfEffectDamage
+        }
+
+        return max(0.1, multiplier)
+    }
+
+    private func modifiedSkillCooldown(for skill: Skill) -> TimeInterval {
+        let effects = hero.passiveRuntimeEffects
+        return Self.modifiedSkillCooldown(
+            baseCooldown: skill.cooldown,
+            passiveCooldownReduction: effects.passiveCooldownReduction,
+            passiveCastSpeed: effects.passiveCastSpeed
+        )
+    }
+
+    private func modifiedSkillDuration(for skill: Skill) -> TimeInterval {
+        max(1, skill.cooldown * (1.0 + max(0, hero.passiveRuntimeEffects.passiveSkillDurationIncrease)))
+    }
+
+    private func modifiedSkillHealing(_ amount: Int) -> Int {
+        max(1, Int(Double(max(0, amount)) * (1.0 + max(0, hero.passiveRuntimeEffects.passiveSkillHealIncrease))))
+    }
+
+    private func applyPassiveHpRegen(deltaTime: TimeInterval) {
+        let passiveHpRegenPerSec = hero.passiveRuntimeEffects.passiveHpRegenPerSec
+        guard passiveHpRegenPerSec > 0, deltaTime > 0 else { return }
+        let healed = hero.heal(Int(passiveHpRegenPerSec * deltaTime))
+        if healed > 0 {
+            heroHP = hero.currentHP
+        }
+    }
+
+    private func applyPassiveAddHpPerHit() {
+        let passiveAddHpPerHit = hero.passiveRuntimeEffects.passiveAddHpPerHit
+        guard passiveAddHpPerHit > 0 else { return }
+        let healed = hero.heal(passiveAddHpPerHit)
+        if healed > 0 {
+            heroHP = hero.currentHP
+        }
+    }
+
+    private func applyPassiveHpLeech(fromDamage damage: Int) {
+        let passiveHpLeech = hero.passiveRuntimeEffects.passiveHpLeech
+        guard passiveHpLeech > 0, damage > 0 else { return }
+        let healed = hero.heal(Int(Double(damage) * passiveHpLeech))
+        if healed > 0 {
+            heroHP = hero.currentHP
+        }
+    }
+
+    private func applyPassiveAddHpPerKill() {
+        let passiveAddHpPerKill = hero.passiveRuntimeEffects.passiveAddHpPerKill
+        guard passiveAddHpPerKill > 0 else { return }
+        let healed = hero.heal(passiveAddHpPerKill)
+        if healed > 0 {
+            heroHP = hero.currentHP
+        }
     }
 
     private var heroAttackInterval: TimeInterval {
@@ -817,7 +1079,7 @@ class Battle: ObservableObject {
     @discardableResult
     private func applyCooldownHeroSkillIfReady() -> Bool {
         guard let skill = readyCooldownHeroSkill() else { return false }
-        skillCooldowns[heroSkillCooldownKey(skill)] = max(1, skill.cooldown)
+        skillCooldowns[heroSkillCooldownKey(skill)] = modifiedSkillCooldown(for: skill)
         return applyHeroSkill(skill)
     }
 
@@ -1033,12 +1295,12 @@ class Battle: ObservableObject {
         if skill.damageMultiplier > 0 {
             guard let target = activeEnemyState else { return false }
             let hit = DamageCalculator.calculateResult(
-                attackerATK: max(1, Int(Double(modifiedHeroAttack) * skill.damageMultiplier)),
+                attackerATK: modifiedHeroSkillAttack(for: skill),
                 defenderDEF: target.monster.def,
                 critRate: modifiedHeroCritRate,
                 critDamage: hero.critDamage
             )
-            let defeated = damageFocusedEnemy(hit.amount)
+            let defeated = damageFocusedEnemy(hit.amount, leechForHero: true)
             log.append(BattleLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
@@ -1100,7 +1362,7 @@ class Battle: ObservableObject {
         }
         guard !targetIndices.isEmpty, skill.damageMultiplier > 0 else { return false }
 
-        let skillAttack = max(1, Int(Double(modifiedHeroAttack) * skill.damageMultiplier))
+        let skillAttack = modifiedHeroSkillAttack(for: skill)
         var defeatedIndices: [Int] = []
         var didCrit = false
 
@@ -1113,7 +1375,7 @@ class Battle: ObservableObject {
                 critDamage: hero.critDamage
             )
             didCrit = didCrit || hit.isCrit
-            if damageEnemy(at: index, amount: hit.amount) {
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
             log.append(BattleLogEntry(
@@ -1131,6 +1393,20 @@ class Battle: ObservableObject {
             guard !isOver else { break }
             _ = completeEnemy(at: index)
         }
+
+        if !isOver {
+            if skill.id == "60401" {
+                armGroundSlamRocks(hitCount: targetIndices.count)
+            } else if isPhysicalAreaDamageSkill(skill) {
+                _ = triggerGroundSlamRockExplosionIfNeeded(
+                    attacker: .hero,
+                    attackPower: modifiedHeroAttack,
+                    critRate: modifiedHeroCritRate,
+                    critDamage: hero.critDamage
+                )
+            }
+        }
+
         if !isOver {
             _ = triggerChargedTrapExplosionIfNeeded(after: skill)
         }
@@ -1145,7 +1421,7 @@ class Battle: ObservableObject {
         guard !targetIndices.isEmpty, skill.damageMultiplier > 0 else { return false }
 
         let hitCount = 2
-        let hitAttack = max(1, Int(Double(modifiedHeroAttack) * skill.damageMultiplier / Double(hitCount)))
+        let hitAttack = modifiedHeroSkillAttack(for: skill, multiplierOverride: skill.damageMultiplier / Double(hitCount))
         var defeatedIndices: [Int] = []
         var didCrit = false
 
@@ -1160,7 +1436,7 @@ class Battle: ObservableObject {
                     critDamage: hero.critDamage
                 )
                 didCrit = didCrit || hit.isCrit
-                if damageEnemy(at: index, amount: hit.amount), !defeatedIndices.contains(index) {
+                if damageEnemy(at: index, amount: hit.amount, leechForHero: true), !defeatedIndices.contains(index) {
                     defeatedIndices.append(index)
                 }
                 log.append(BattleLogEntry(
@@ -1193,7 +1469,7 @@ class Battle: ObservableObject {
         }
         guard !targetIndices.isEmpty, skill.damageMultiplier > 0 else { return false }
 
-        let skillAttack = max(1, Int(Double(modifiedHeroAttack) * skill.damageMultiplier))
+        let skillAttack = modifiedHeroSkillAttack(for: skill)
         var defeatedIndices: [Int] = []
         var didCrit = false
 
@@ -1206,7 +1482,7 @@ class Battle: ObservableObject {
                 critDamage: hero.critDamage
             )
             didCrit = didCrit || hit.isCrit
-            if damageEnemy(at: index, amount: hit.amount) {
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
             log.append(BattleLogEntry(
@@ -1240,37 +1516,41 @@ class Battle: ObservableObject {
     private func applyHeroRetributionStrikeSkill(_ skill: Skill) -> Bool {
         guard skill.damageMultiplier > 0 else { return false }
 
-        let strikeAttack = max(1, Int(Double(modifiedHeroAttack) * skill.damageMultiplier))
+        let strikeAttack = modifiedHeroSkillAttack(for: skill)
         let strikeCount = retributionStrikeHitCount()
+        let targetIndices = focusedSkillTargetIndices(for: skill)
         var didApply = false
         var didCrit = false
 
         for _ in 0..<strikeCount {
-            guard let targetIndex = focusedEnemyArrayIndex else { break }
-            let target = enemyStates[targetIndex]
-            guard !target.isDefeated, target.hp > 0 else { continue }
+            for targetIndex in targetIndices {
+                guard enemyStates.indices.contains(targetIndex) else { continue }
+                let target = enemyStates[targetIndex]
+                guard !target.isDefeated, target.hp > 0 else { continue }
 
-            let hit = DamageCalculator.calculateResult(
-                attackerATK: strikeAttack,
-                defenderDEF: target.monster.def,
-                critRate: modifiedHeroCritRate,
-                critDamage: hero.critDamage
-            )
-            didApply = true
-            didCrit = didCrit || hit.isCrit
-            let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
-            log.append(BattleLogEntry(
-                attacker: .hero,
-                damage: hit.amount,
-                isCrit: hit.isCrit,
-                skillName: skill.name,
-                kind: .damage
-            ))
+                let hit = DamageCalculator.calculateResult(
+                    attackerATK: strikeAttack,
+                    defenderDEF: target.monster.def,
+                    critRate: modifiedHeroCritRate,
+                    critDamage: hero.critDamage
+                )
+                didApply = true
+                didCrit = didCrit || hit.isCrit
+                let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
+                log.append(BattleLogEntry(
+                    attacker: .hero,
+                    damage: hit.amount,
+                    isCrit: hit.isCrit,
+                    skillName: skill.name,
+                    kind: .damage
+                ))
 
-            if defeated {
-                _ = completeEnemy(at: targetIndex)
-                if isOver { break }
+                if defeated {
+                    _ = completeEnemy(at: targetIndex)
+                    if isOver { break }
+                }
             }
+            if isOver { break }
         }
 
         guard didApply else { return false }
@@ -1310,12 +1590,12 @@ class Battle: ObservableObject {
         let attackMultiplier = Double(skill.levelOneValue) / 100.0 * Double(lodgedArrowCount)
         let target = enemyStates[targetIndex]
         let hit = DamageCalculator.calculateResult(
-            attackerATK: max(1, Int(Double(modifiedHeroAttack) * attackMultiplier)),
+            attackerATK: modifiedHeroSkillAttack(for: skill, multiplierOverride: attackMultiplier),
             defenderDEF: target.monster.def,
             critRate: modifiedHeroCritRate,
             critDamage: hero.critDamage
         )
-        let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+        let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
         log.append(BattleLogEntry(
             attacker: .hero,
             damage: hit.amount,
@@ -1345,7 +1625,7 @@ class Battle: ObservableObject {
         guard let lodgedTargetIndex = focusedEnemyArrayIndex, skill.levelOneValue > 0 else { return false }
         guard enemyStates.indices.contains(lodgedTargetIndex), !enemyStates[lodgedTargetIndex].isDefeated else { return false }
 
-        let lightningAttack = max(1, Int(Double(modifiedHeroAttack) * Double(skill.levelOneValue) / 100.0))
+        let lightningAttack = modifiedHeroSkillAttack(for: skill, multiplierOverride: Double(skill.levelOneValue) / 100.0)
         let lodgedTarget = enemyStates[lodgedTargetIndex]
         let lodgedHit = DamageCalculator.calculateResult(
             attackerATK: lightningAttack,
@@ -1353,7 +1633,7 @@ class Battle: ObservableObject {
             critRate: modifiedHeroCritRate,
             critDamage: hero.critDamage
         )
-        let lodgedDefeated = damageEnemy(at: lodgedTargetIndex, amount: lodgedHit.amount)
+        let lodgedDefeated = damageEnemy(at: lodgedTargetIndex, amount: lodgedHit.amount, leechForHero: true)
         log.append(BattleLogEntry(
             attacker: .hero,
             damage: lodgedHit.amount,
@@ -1391,7 +1671,7 @@ class Battle: ObservableObject {
         guard skill.damageMultiplier > 0 else { return false }
 
         let minimumSourceProvenProjectileCount = 2
-        let projectileAttack = max(1, Int(Double(modifiedHeroAttack) * skill.damageMultiplier))
+        let projectileAttack = modifiedHeroSkillAttack(for: skill)
         var didApply = false
         var didCrit = false
 
@@ -1408,7 +1688,7 @@ class Battle: ObservableObject {
             )
             didApply = true
             didCrit = didCrit || hit.isCrit
-            let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+            let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
             log.append(BattleLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
@@ -1484,7 +1764,7 @@ class Battle: ObservableObject {
                     critRate: modifiedHeroCritRate,
                     critDamage: hero.critDamage
                 )
-                if damageEnemy(at: index, amount: hit.amount) {
+                if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                     defeatedIndices.append(index)
                 }
                 log.append(BattleLogEntry(
@@ -1518,6 +1798,14 @@ class Battle: ObservableObject {
                 let hitIndices = applyRangeDamageOverTime(from: buff, deltaTime: deltaTime)
                 if !isOver {
                     markEnemiesBleeding(at: hitIndices, skillName: buff.name)
+                }
+                if !isOver {
+                    _ = triggerGroundSlamRockExplosionIfNeeded(
+                        attacker: .hero,
+                        attackPower: modifiedHeroAttack,
+                        critRate: modifiedHeroCritRate,
+                        critDamage: hero.critDamage
+                    )
                 }
             } else {
                 _ = applyRangeDamageOverTime(from: buff, deltaTime: deltaTime)
@@ -1581,7 +1869,7 @@ class Battle: ObservableObject {
             critRate: modifiedHeroCritRate,
             critDamage: hero.critDamage
         )
-        let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+        let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
         log.append(BattleLogEntry(
             attacker: .hero,
             damage: hit.amount,
@@ -1614,7 +1902,7 @@ class Battle: ObservableObject {
             critRate: modifiedSupportCritRate,
             critDamage: 1.5
         )
-        let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
+        let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
         log.append(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: hit.amount,
@@ -1645,7 +1933,7 @@ class Battle: ObservableObject {
                 critRate: modifiedHeroCritRate,
                 critDamage: hero.critDamage
             )
-            if damageEnemy(at: index, amount: hit.amount) {
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
             log.append(BattleLogEntry(
@@ -1688,7 +1976,7 @@ class Battle: ObservableObject {
                 critRate: modifiedSupportCritRate,
                 critDamage: 1.5
             )
-            if damageEnemy(at: index, amount: hit.amount) {
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
             log.append(BattleLogEntry(
@@ -1776,6 +2064,21 @@ class Battle: ObservableObject {
         }
     }
 
+    private func armGroundSlamRocks(hitCount: Int) {
+        guard hitCount > 0 else { return }
+        groundSlamRockCharges = min(
+            GroundSlamRockScaffold.maxCharges,
+            max(groundSlamRockCharges, hitCount)
+        )
+        log.append(BattleLogEntry(
+            attacker: .hero,
+            damage: 0,
+            isCrit: false,
+            skillName: "大地强击岩石",
+            kind: .buff
+        ))
+    }
+
     private func tickEnemyStatusEffects(deltaTime: TimeInterval) {
         guard deltaTime > 0 else { return }
         for index in enemyStates.indices {
@@ -1790,7 +2093,7 @@ class Battle: ObservableObject {
             return false
         }
 
-        let revivedHP = max(1, Int(Double(hero.maxHP) * Double(skill.levelOneValue) / 100.0))
+        let revivedHP = modifiedSkillHealing(max(1, Int(Double(hero.maxHP) * Double(skill.levelOneValue) / 100.0)))
         let restored = hero.revive(withHP: revivedHP)
         heroHP = hero.currentHP
         unyieldingWillWasUsed = true
@@ -1833,7 +2136,7 @@ class Battle: ObservableObject {
                 critDamage: hero.critDamage
             )
             didCrit = didCrit || hit.isCrit
-            if damageEnemy(at: index, amount: hit.amount) {
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
             log.append(BattleLogEntry(
@@ -1862,15 +2165,88 @@ class Battle: ObservableObject {
         skill.damageElement.isElemental && skill.damageMultiplier > 0
     }
 
+    private func isPhysicalAreaDamageSkill(_ skill: Skill) -> Bool {
+        guard skill.damageElement == .physical, skill.damageMultiplier > 0 else { return false }
+        switch skill.delivery {
+        case .meleeAOE, .projectileAOE, .rangeAOE:
+            return true
+        case .melee, .projectile, .range, .summonProjectile, .trap, .buff, .heal, .resurrection, .none:
+            return false
+        }
+    }
+
+    @discardableResult
+    private func triggerGroundSlamRockExplosionIfNeeded(
+        attacker: BattleLogEntry.Battler,
+        attackPower: Int,
+        critRate: Double,
+        critDamage: Double
+    ) -> Bool {
+        guard groundSlamRockCharges > 0 else { return false }
+        let targetIndices = aliveEnemyIndices()
+        guard !targetIndices.isEmpty else { return false }
+
+        let explosionAttack = max(
+            1,
+            Int(Double(max(1, attackPower)) * GroundSlamRockScaffold.explosionDamageMultiplier)
+        )
+        groundSlamRockCharges = 0
+        var defeatedIndices: [Int] = []
+        var didCrit = false
+
+        for index in targetIndices {
+            let target = enemyStates[index]
+            let hit = DamageCalculator.calculateResult(
+                attackerATK: explosionAttack,
+                defenderDEF: target.monster.def,
+                critRate: critRate,
+                critDamage: critDamage
+            )
+            didCrit = didCrit || hit.isCrit
+            if damageEnemy(at: index, amount: hit.amount, leechForHero: attacker == .hero) {
+                defeatedIndices.append(index)
+            }
+            log.append(BattleLogEntry(
+                attacker: attacker,
+                damage: hit.amount,
+                isCrit: hit.isCrit,
+                skillName: GroundSlamRockScaffold.explosionSkillName,
+                kind: .damage,
+                damageElement: .physical,
+                delivery: .meleeAOE
+            ))
+        }
+
+        switch attacker {
+        case .hero:
+            onEvent?(.heroSkill(skillName: GroundSlamRockScaffold.explosionSkillName, isCrit: didCrit))
+        case .support(let heroClass):
+            onEvent?(.supportSkill(
+                heroClass: heroClass,
+                skillName: GroundSlamRockScaffold.explosionSkillName,
+                isCrit: didCrit
+            ))
+        case .monster:
+            break
+        }
+
+        for index in defeatedIndices {
+            guard !isOver else { break }
+            _ = completeEnemy(at: index)
+        }
+        return true
+    }
+
     @discardableResult
     private func activateHeroBuff(for skill: Skill) -> Bool {
         let buff: ActiveBattleBuff
+        let modifiedDuration = modifiedSkillDuration(for: skill)
         switch skill.id {
         case "10401":
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
@@ -1885,14 +2261,14 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.5,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
                 bonusAttackDamageMultiplier: 0,
                 rangeDamagePerSecondMultiplier: 0,
-                healPerHit: max(1, skill.levelOneValue),
+                healPerHit: modifiedSkillHealing(skill.levelOneValue),
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil
             )
@@ -1900,12 +2276,12 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
-                bonusAttackDamageMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+                bonusAttackDamageMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill)),
                 rangeDamagePerSecondMultiplier: 0,
                 healPerHit: 0,
                 healPerSecond: 0,
@@ -1915,13 +2291,13 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
                 bonusAttackDamageMultiplier: 0,
-                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill)),
                 healPerHit: 0,
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil
@@ -1930,13 +2306,13 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
                 bonusAttackDamageMultiplier: 0,
-                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill)),
                 healPerHit: 0,
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil
@@ -1945,7 +2321,7 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0 + Double(skill.levelOneValue) / 100.0,
@@ -1960,7 +2336,7 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
@@ -1968,14 +2344,14 @@ class Battle: ObservableObject {
                 bonusAttackDamageMultiplier: 0,
                 rangeDamagePerSecondMultiplier: 0,
                 healPerHit: 0,
-                healPerSecond: max(1, skill.levelOneValue),
+                healPerSecond: modifiedSkillHealing(skill.levelOneValue),
                 damageAbsorbRemaining: nil
             )
         case "60301":
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
@@ -2005,7 +2381,7 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
@@ -2016,19 +2392,19 @@ class Battle: ObservableObject {
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil,
                 trapChargesRemaining: 1,
-                trapDamageMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0)
+                trapDamageMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill))
             )
         case "50501":
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
                 bonusAttackDamageMultiplier: 0,
-                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill)),
                 healPerHit: 0,
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil
@@ -2037,13 +2413,13 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: "\(skill.name)电流",
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
                 bonusAttackDamageMultiplier: 0,
-                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill)),
                 healPerHit: 0,
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil
@@ -2052,13 +2428,13 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0,
                 attackSpeedMultiplier: 1.0,
                 critRateMultiplier: 1.0,
                 bonusAttackDamageMultiplier: 0,
-                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0),
+                rangeDamagePerSecondMultiplier: max(1.0, Double(skill.levelOneValue) / 100.0 * passiveSkillDamageMultiplier(for: skill)),
                 healPerHit: 0,
                 healPerSecond: 0,
                 damageAbsorbRemaining: nil
@@ -2067,7 +2443,7 @@ class Battle: ObservableObject {
             buff = ActiveBattleBuff(
                 id: skill.id,
                 name: skill.name,
-                remainingDuration: max(1, skill.cooldown),
+                remainingDuration: modifiedDuration,
                 remainingHeroAttacks: nil,
                 attackMultiplier: 1.0 + Double(skill.levelOneValue) / 100.0,
                 attackSpeedMultiplier: 1.0,
@@ -2282,23 +2658,31 @@ class Battle: ObservableObject {
 
     @discardableResult
     private func applyHeroHealSkill(_ skill: Skill) -> Bool {
-        let applied = applyPartyHealSkill(skill, attacker: .hero)
+        let applied = applyPartyHealSkill(skill, attacker: .hero, appliesHeroPassiveHealing: true)
         onEvent?(.heroSkill(skillName: skill.name, isCrit: false))
         return applied
     }
 
     @discardableResult
     private func applySupportHealSkill(_ skill: Skill, member: PartyMember) -> Bool {
-        let applied = applyPartyHealSkill(skill, attacker: .support(member.heroClass))
+        let applied = applyPartyHealSkill(skill, attacker: .support(member.heroClass), appliesHeroPassiveHealing: false)
         onEvent?(.supportSkill(heroClass: member.heroClass, skillName: skill.name, isCrit: false))
         return applied
     }
 
     @discardableResult
-    private func applyPartyHealSkill(_ skill: Skill, attacker: BattleLogEntry.Battler) -> Bool {
+    private func applyPartyHealSkill(
+        _ skill: Skill,
+        attacker: BattleLogEntry.Battler,
+        appliesHeroPassiveHealing: Bool
+    ) -> Bool {
         var healed = 0
         if let target = mostWoundedLivingAllyTarget() {
-            let amount = healingAmount(for: target, skill: skill)
+            let amount = healingAmount(
+                for: target,
+                skill: skill,
+                appliesHeroPassiveHealing: appliesHeroPassiveHealing
+            )
             switch target {
             case .hero:
                 healed = hero.heal(amount)
@@ -2350,7 +2734,11 @@ class Battle: ObservableObject {
         }?.target
     }
 
-    private func healingAmount(for target: BattleAllyHealTarget, skill: Skill) -> Int {
+    private func healingAmount(
+        for target: BattleAllyHealTarget,
+        skill: Skill,
+        appliesHeroPassiveHealing: Bool
+    ) -> Int {
         let maxHP: Int
         switch target {
         case .hero:
@@ -2358,13 +2746,14 @@ class Battle: ObservableObject {
         case .support(let index):
             maxHP = supportStates.indices.contains(index) ? supportStates[index].maxHP : 0
         }
-        return max(1, Int(Double(maxHP) * Double(skill.levelOneValue) / 100.0))
+        let baseHealing = max(1, Int(Double(maxHP) * Double(skill.levelOneValue) / 100.0))
+        return appliesHeroPassiveHealing ? modifiedSkillHealing(baseHealing) : baseHealing
     }
 
     @discardableResult
     private func applyHeroResurrectionSkill(_ skill: Skill) -> Bool {
         guard let targetIndex = firstDefeatedSupportIndex() else { return false }
-        let revivedHP = resurrectionHP(for: supportStates[targetIndex], skill: skill)
+        let revivedHP = resurrectionHP(for: supportStates[targetIndex], skill: skill, appliesHeroPassiveHealing: true)
         let restored = reviveSupportMember(at: targetIndex, withHP: revivedHP)
         log.append(BattleLogEntry(
             attacker: .hero,
@@ -2380,7 +2769,7 @@ class Battle: ObservableObject {
     @discardableResult
     private func applySupportResurrectionSkill(_ skill: Skill, member: PartyMember) -> Bool {
         guard let targetIndex = firstDefeatedSupportIndex(excludingSlotIndex: member.slotIndex) else { return false }
-        let revivedHP = resurrectionHP(for: supportStates[targetIndex], skill: skill)
+        let revivedHP = resurrectionHP(for: supportStates[targetIndex], skill: skill, appliesHeroPassiveHealing: false)
         let restored = reviveSupportMember(at: targetIndex, withHP: revivedHP)
         log.append(BattleLogEntry(
             attacker: .support(member.heroClass),
@@ -2399,8 +2788,13 @@ class Battle: ObservableObject {
         }
     }
 
-    private func resurrectionHP(for state: BattleSupportState, skill: Skill) -> Int {
-        max(1, Int(Double(state.maxHP) * Double(skill.levelOneValue) / 100.0))
+    private func resurrectionHP(
+        for state: BattleSupportState,
+        skill: Skill,
+        appliesHeroPassiveHealing: Bool
+    ) -> Int {
+        let baseHealing = max(1, Int(Double(state.maxHP) * Double(skill.levelOneValue) / 100.0))
+        return appliesHeroPassiveHealing ? modifiedSkillHealing(baseHealing) : baseHealing
     }
 
     @discardableResult
@@ -2687,6 +3081,20 @@ class Battle: ObservableObject {
             guard !isOver else { break }
             _ = completeEnemy(at: index)
         }
+
+        if !isOver {
+            if skill.id == "60401" {
+                armGroundSlamRocks(hitCount: targetIndices.count)
+            } else if isPhysicalAreaDamageSkill(skill) {
+                _ = triggerGroundSlamRockExplosionIfNeeded(
+                    attacker: .support(member.heroClass),
+                    attackPower: modifiedSupportAttack(for: member),
+                    critRate: modifiedSupportCritRate,
+                    critDamage: 1.5
+                )
+            }
+        }
+
         if !isOver {
             _ = triggerChargedTrapExplosionIfNeeded(after: skill)
         }
@@ -2880,7 +3288,6 @@ class Battle: ObservableObject {
     }
 }
 
-#if DEBUG
 extension Battle {
     func activateBattleSceneSnapshotDeployables() {
         let skills = HeroClass.allCases
@@ -2928,7 +3335,6 @@ extension Battle {
         }
     }
 }
-#endif
 
 struct BattleLogEntry: Identifiable {
     let id = UUID()

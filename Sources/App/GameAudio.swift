@@ -13,6 +13,7 @@ enum GameAudioEvent: String, CaseIterable {
     case battleLost
     case levelUp
     case itemEquipped
+    case itemConsumed
     case preview
 }
 
@@ -83,6 +84,7 @@ extension GameAudioEvent {
         case .battleLost: return "sfx_battle_lost"
         case .levelUp: return "sfx_level_up"
         case .itemEquipped: return "sfx_item_equipped"
+        case .itemConsumed: return "sfx_item_consumed"
         case .preview: return "sfx_preview"
         }
     }
@@ -111,6 +113,7 @@ extension GameAudioEvent {
         case .battleLost: return "Basso"
         case .levelUp: return "Ping"
         case .itemEquipped: return "Pop"
+        case .itemConsumed: return "Bottle"
         case .preview: return "Glass"
         }
     }
@@ -119,7 +122,7 @@ extension GameAudioEvent {
         switch self {
         case .heroAttack, .heroCriticalHit, .skillCast, .heroDamaged:
             return 0.42
-        case .lootFound, .itemEquipped, .preview:
+        case .lootFound, .itemEquipped, .itemConsumed, .preview:
             return 0.36
         case .battleWon, .battleLost, .levelUp:
             return 0.46
@@ -130,7 +133,7 @@ extension GameAudioEvent {
         switch self {
         case .heroAttack, .heroCriticalHit, .skillCast, .heroDamaged:
             return 0.18
-        case .lootFound, .itemEquipped, .preview:
+        case .lootFound, .itemEquipped, .itemConsumed, .preview:
             return 0.25
         case .battleWon, .battleLost, .levelUp:
             return 0.5

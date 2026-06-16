@@ -5,6 +5,10 @@ app_name="${APP_NAME:-TBH}"
 keep_screenshot="${KEEP_SCREENSHOT:-0}"
 input_screenshot="${SCREENSHOT_PATH:-}"
 render_snapshot="${RENDER_BATTLE_SCENE:-0}"
+packaged_render="${PACKAGED_BATTLE_SCENE_RENDER:-0}"
+packaged_tbh_binary="${PACKAGED_TBH_BINARY:-dist/TBH.app/Contents/MacOS/TBH}"
+packaged_tbh_resource_bundle="${PACKAGED_TBH_RESOURCE_BUNDLE:-dist/TBH.app/Contents/Resources/TBH-macOS_TBH.bundle}"
+packaged_cli_binary=""
 rendered_snapshot=0
 tmpdir="$(mktemp -d)"
 screenshot_path="$tmpdir/tbh-local-battle-scene.png"
@@ -18,12 +22,21 @@ shock_current_screenshot_path="$tmpdir/tbh-local-battle-scene-shock-current.png"
 shield_charge_screenshot_path="$tmpdir/tbh-local-battle-scene-shield-charge.png"
 slam_jump_screenshot_path="$tmpdir/tbh-local-battle-scene-slam-jump.png"
 earthquake_impact_screenshot_path="$tmpdir/tbh-local-battle-scene-earthquake-impact.png"
+rock_explosion_screenshot_path="$tmpdir/tbh-local-battle-scene-rock-explosion.png"
 shockwave_impact_screenshot_path="$tmpdir/tbh-local-battle-scene-shockwave-impact.png"
 chaos_burst_screenshot_path="$tmpdir/tbh-local-battle-scene-chaos-burst.png"
+monster_fire_incoming_screenshot_path="$tmpdir/tbh-local-battle-scene-monster-fire-incoming.png"
+monster_cold_incoming_screenshot_path="$tmpdir/tbh-local-battle-scene-monster-cold-incoming.png"
+monster_lightning_incoming_screenshot_path="$tmpdir/tbh-local-battle-scene-monster-lightning-incoming.png"
+monster_chaos_incoming_screenshot_path="$tmpdir/tbh-local-battle-scene-monster-chaos-incoming.png"
 heal_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-heal-utility.png"
 resurrection_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-resurrection-utility.png"
 shield_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-shield-utility.png"
 sacred_blade_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-sacred-blade-utility.png"
+swift_surge_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-swift-surge-utility.png"
+quick_loader_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-quick-loader-utility.png"
+generals_cry_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-generals-cry-utility.png"
+bloodlust_utility_screenshot_path="$tmpdir/tbh-local-battle-scene-bloodlust-utility.png"
 status_row_screenshot_path="$tmpdir/tbh-local-battle-status-row.png"
 crowded_status_row_screenshot_path="$tmpdir/tbh-local-battle-status-row-crowded.png"
 
@@ -46,64 +59,94 @@ require_tool() {
 require_tool python3
 
 render_battle_scene_snapshot() {
-  require_tool swift
-  echo "Rendering deterministic local battle scene snapshot..."
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$screenshot_path" --render-battle-scene-time 0 >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$motion_screenshot_path" --render-battle-scene-time 0.25 >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$explosive_bolt_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture explosiveBolt >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$meteor_strike_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture meteorStrike >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$lightning_strike_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture lightningStrike >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$trap_burst_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture trapBurst >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$summon_projectile_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture summonProjectile >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$shock_current_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture shockCurrent >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$shield_charge_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture shieldCharge >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$slam_jump_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture slamJump >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$earthquake_impact_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture earthquakeImpact >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$shockwave_impact_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture shockwaveImpact >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$chaos_burst_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture chaosBurst >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$heal_utility_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture healUtility >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$resurrection_utility_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture resurrectionUtility >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$shield_utility_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture shieldUtility >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$sacred_blade_utility_screenshot_path" --render-battle-scene-time 0 \
-      --render-battle-scene-fixture sacredBladeUtility >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$status_row_screenshot_path" \
-      --render-battle-scene-fixture playerStatusRow >/dev/null
-  env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
-    swift run --disable-sandbox TBH --render-battle-scene "$crowded_status_row_screenshot_path" \
-      --render-battle-scene-fixture playerStatusRowCrowded >/dev/null
+  local render_source="swiftpm"
+  if [[ "$packaged_render" == "1" ]]; then
+    render_source="packaged"
+    if [[ ! -x "$packaged_tbh_binary" ]]; then
+      echo "PACKAGED_TBH_BINARY is not executable: $packaged_tbh_binary" >&2
+      exit 2
+    fi
+    if [[ ! -d "$packaged_tbh_resource_bundle" ]]; then
+      echo "PACKAGED_TBH_RESOURCE_BUNDLE does not exist: $packaged_tbh_resource_bundle" >&2
+      exit 2
+    fi
+    local packaged_cli_dir="$tmpdir/tbh-packaged-cli"
+    mkdir -p "$packaged_cli_dir"
+    cp "$packaged_tbh_binary" "$packaged_cli_dir/TBH"
+    cp -R "$packaged_tbh_resource_bundle" "$packaged_cli_dir/"
+    packaged_cli_binary="$packaged_cli_dir/TBH"
+  else
+    require_tool swift
+  fi
+
+  echo "Rendering deterministic local battle scene snapshot via $render_source..."
+  render_battle_scene_snapshot_one "$screenshot_path" --render-battle-scene-time 0
+  render_battle_scene_snapshot_one "$motion_screenshot_path" --render-battle-scene-time 0.25
+  render_battle_scene_snapshot_one "$explosive_bolt_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture explosiveBolt
+  render_battle_scene_snapshot_one "$meteor_strike_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture meteorStrike
+  render_battle_scene_snapshot_one "$lightning_strike_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture lightningStrike
+  render_battle_scene_snapshot_one "$trap_burst_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture trapBurst
+  render_battle_scene_snapshot_one "$summon_projectile_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture summonProjectile
+  render_battle_scene_snapshot_one "$shock_current_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture shockCurrent
+  render_battle_scene_snapshot_one "$shield_charge_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture shieldCharge
+  render_battle_scene_snapshot_one "$slam_jump_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture slamJump
+  render_battle_scene_snapshot_one "$earthquake_impact_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture earthquakeImpact
+  render_battle_scene_snapshot_one "$rock_explosion_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture earthquakeRockExplosion
+  render_battle_scene_snapshot_one "$shockwave_impact_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture shockwaveImpact
+  render_battle_scene_snapshot_one "$chaos_burst_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture chaosBurst
+  render_battle_scene_snapshot_one "$monster_fire_incoming_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture monsterFireIncoming
+  render_battle_scene_snapshot_one "$monster_cold_incoming_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture monsterColdIncoming
+  render_battle_scene_snapshot_one "$monster_lightning_incoming_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture monsterLightningIncoming
+  render_battle_scene_snapshot_one "$monster_chaos_incoming_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture monsterChaosIncoming
+  render_battle_scene_snapshot_one "$heal_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture healUtility
+  render_battle_scene_snapshot_one "$resurrection_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture resurrectionUtility
+  render_battle_scene_snapshot_one "$shield_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture shieldUtility
+  render_battle_scene_snapshot_one "$sacred_blade_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture sacredBladeUtility
+  render_battle_scene_snapshot_one "$swift_surge_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture swiftSurgeUtility
+  render_battle_scene_snapshot_one "$quick_loader_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture quickLoaderUtility
+  render_battle_scene_snapshot_one "$generals_cry_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture generalsCryUtility
+  render_battle_scene_snapshot_one "$bloodlust_utility_screenshot_path" --render-battle-scene-time 0 \
+    --render-battle-scene-fixture bloodlustUtility
+  render_battle_scene_snapshot_one "$status_row_screenshot_path" \
+    --render-battle-scene-fixture playerStatusRow
+  render_battle_scene_snapshot_one "$crowded_status_row_screenshot_path" \
+    --render-battle-scene-fixture playerStatusRowCrowded
   rendered_snapshot=1
+}
+
+render_battle_scene_snapshot_one() {
+  local output_path="$1"
+  shift
+
+  if [[ "$packaged_render" == "1" ]]; then
+    "$packaged_cli_binary" --render-battle-scene "$output_path" "$@" >/dev/null
+  else
+    env CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}" \
+      swift run --disable-sandbox TBH --render-battle-scene "$output_path" "$@" >/dev/null
+  fi
 }
 
 if [[ -n "$input_screenshot" ]]; then
@@ -176,6 +219,10 @@ analyze_screenshot() {
   if [[ "$rendered_snapshot" == "1" ]]; then
     earthquake_impact_path="$earthquake_impact_screenshot_path"
   fi
+  local rock_explosion_path="${ROCK_EXPLOSION_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    rock_explosion_path="$rock_explosion_screenshot_path"
+  fi
   local shockwave_impact_path="${SHOCKWAVE_IMPACT_SCREENSHOT_PATH:-}"
   if [[ "$rendered_snapshot" == "1" ]]; then
     shockwave_impact_path="$shockwave_impact_screenshot_path"
@@ -183,6 +230,22 @@ analyze_screenshot() {
   local chaos_burst_path="${CHAOS_BURST_SCREENSHOT_PATH:-}"
   if [[ "$rendered_snapshot" == "1" ]]; then
     chaos_burst_path="$chaos_burst_screenshot_path"
+  fi
+  local monster_fire_incoming_path="${MONSTER_FIRE_INCOMING_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    monster_fire_incoming_path="$monster_fire_incoming_screenshot_path"
+  fi
+  local monster_cold_incoming_path="${MONSTER_COLD_INCOMING_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    monster_cold_incoming_path="$monster_cold_incoming_screenshot_path"
+  fi
+  local monster_lightning_incoming_path="${MONSTER_LIGHTNING_INCOMING_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    monster_lightning_incoming_path="$monster_lightning_incoming_screenshot_path"
+  fi
+  local monster_chaos_incoming_path="${MONSTER_CHAOS_INCOMING_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    monster_chaos_incoming_path="$monster_chaos_incoming_screenshot_path"
   fi
   local heal_utility_path="${HEAL_UTILITY_SCREENSHOT_PATH:-}"
   if [[ "$rendered_snapshot" == "1" ]]; then
@@ -199,6 +262,22 @@ analyze_screenshot() {
   local sacred_blade_utility_path="${SACRED_BLADE_UTILITY_SCREENSHOT_PATH:-}"
   if [[ "$rendered_snapshot" == "1" ]]; then
     sacred_blade_utility_path="$sacred_blade_utility_screenshot_path"
+  fi
+  local swift_surge_utility_path="${SWIFT_SURGE_UTILITY_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    swift_surge_utility_path="$swift_surge_utility_screenshot_path"
+  fi
+  local quick_loader_utility_path="${QUICK_LOADER_UTILITY_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    quick_loader_utility_path="$quick_loader_utility_screenshot_path"
+  fi
+  local generals_cry_utility_path="${GENERALS_CRY_UTILITY_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    generals_cry_utility_path="$generals_cry_utility_screenshot_path"
+  fi
+  local bloodlust_utility_path="${BLOODLUST_UTILITY_SCREENSHOT_PATH:-}"
+  if [[ "$rendered_snapshot" == "1" ]]; then
+    bloodlust_utility_path="$bloodlust_utility_screenshot_path"
   fi
   local status_row_path="${STATUS_ROW_SCREENSHOT_PATH:-}"
   if [[ "$rendered_snapshot" == "1" ]]; then
@@ -219,12 +298,21 @@ analyze_screenshot() {
     TBH_SHIELD_CHARGE_SCREENSHOT_PATH="$shield_charge_path" \
     TBH_SLAM_JUMP_SCREENSHOT_PATH="$slam_jump_path" \
     TBH_EARTHQUAKE_IMPACT_SCREENSHOT_PATH="$earthquake_impact_path" \
+    TBH_ROCK_EXPLOSION_SCREENSHOT_PATH="$rock_explosion_path" \
     TBH_SHOCKWAVE_IMPACT_SCREENSHOT_PATH="$shockwave_impact_path" \
     TBH_CHAOS_BURST_SCREENSHOT_PATH="$chaos_burst_path" \
+    TBH_MONSTER_FIRE_INCOMING_SCREENSHOT_PATH="$monster_fire_incoming_path" \
+    TBH_MONSTER_COLD_INCOMING_SCREENSHOT_PATH="$monster_cold_incoming_path" \
+    TBH_MONSTER_LIGHTNING_INCOMING_SCREENSHOT_PATH="$monster_lightning_incoming_path" \
+    TBH_MONSTER_CHAOS_INCOMING_SCREENSHOT_PATH="$monster_chaos_incoming_path" \
     TBH_HEAL_UTILITY_SCREENSHOT_PATH="$heal_utility_path" \
     TBH_RESURRECTION_UTILITY_SCREENSHOT_PATH="$resurrection_utility_path" \
     TBH_UTILITY_SCREENSHOT_PATH="$utility_path" \
     TBH_SACRED_BLADE_UTILITY_SCREENSHOT_PATH="$sacred_blade_utility_path" \
+    TBH_SWIFT_SURGE_UTILITY_SCREENSHOT_PATH="$swift_surge_utility_path" \
+    TBH_QUICK_LOADER_UTILITY_SCREENSHOT_PATH="$quick_loader_utility_path" \
+    TBH_GENERALS_CRY_UTILITY_SCREENSHOT_PATH="$generals_cry_utility_path" \
+    TBH_BLOODLUST_UTILITY_SCREENSHOT_PATH="$bloodlust_utility_path" \
     TBH_STATUS_ROW_SCREENSHOT_PATH="$status_row_path" \
     TBH_CROWDED_STATUS_ROW_SCREENSHOT_PATH="$crowded_status_row_path" \
     python3 - "$screenshot_path" <<'PY'
@@ -319,7 +407,7 @@ band_height = max_y - min_y + 1
 
 official_ratio = 776 / 180
 ground_ratio = 0.263
-ground_platform_width_ratio = 0.707
+ground_platform_width_ratio = 0.90
 ground_platform_side_inset_ratio = (1 - ground_platform_width_ratio) / 2
 estimated_scene_width = band_width / ground_platform_width_ratio
 estimated_scene_ratio = estimated_scene_width / (band_height / ground_ratio)
@@ -348,10 +436,10 @@ if ground_width_ratio > max_ground_width_ratio:
     )
     sys.exit(1)
 
-if not (0.64 <= ground_width_to_image_ratio <= 0.78):
+if not (0.84 <= ground_width_to_image_ratio <= 0.96):
     print(
-        "battle ground platform width no longer matches the official short central platform: "
-        f"ground_w_to_image={ground_width_to_image_ratio:.3f}, expected=0.64-0.78",
+        "battle ground platform width no longer leaves only subtle side margins: "
+        f"ground_w_to_image={ground_width_to_image_ratio:.3f}, expected=0.84-0.96",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -380,13 +468,22 @@ damage_shock_current_pixels = 0
 damage_shield_charge_pixels = 0
 damage_slam_jump_pixels = 0
 damage_earthquake_pixels = 0
+damage_rock_explosion_pixels = 0
 damage_shockwave_pixels = 0
 damage_chaos_pixels = 0
+monster_fire_incoming_pixels = 0
+monster_cold_incoming_pixels = 0
+monster_lightning_incoming_pixels = 0
+monster_chaos_incoming_pixels = 0
 utility_heal_pixels = 0
 utility_resurrection_pixels = 0
 utility_shield_pixels = 0
 utility_sacred_blade_pixels = 0
 utility_sacred_blade_white_pixels = 0
+utility_swift_surge_pixels = 0
+utility_quick_loader_pixels = 0
+utility_generals_cry_pixels = 0
+utility_bloodlust_pixels = 0
 status_row_non_dark_pixels = 0
 status_row_gold_pixels = 0
 status_row_teal_pixels = 0
@@ -642,6 +739,16 @@ if check_party_layout:
             and green > blue * 1.02
         )
 
+    def is_impact_rock_explosion(red, green, blue):
+        return (
+            red >= 150
+            and 85 <= green <= 195
+            and 35 <= blue <= 145
+            and red > blue * 1.35
+            and green > blue * 1.05
+            and red >= green * 1.03
+        )
+
     def is_impact_shockwave(red, green, blue):
         luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue
         return (
@@ -732,6 +839,15 @@ if check_party_layout:
             and green > blue * 1.18
         )
 
+    def is_utility_blood_red(red, green, blue):
+        return (
+            red >= 170
+            and green <= 95
+            and blue <= 105
+            and red > green * 1.75
+            and red > blue * 1.55
+        )
+
     def is_utility_bright_white(red, green, blue):
         return red >= 190 and green >= 190 and blue >= 185
 
@@ -807,15 +923,15 @@ if check_party_layout:
     support_pixels, support_centroid = collect_region(0.30, 0.63, 0.25, 0.96, is_foreground_pixel)
     primary_steel_pixels, _ = collect_region(0.16, 0.36, 0.20, 0.95, is_steel_knight_pixel)
     stage_pill_text_pixels, stage_pill_text_centroid, _ = collect_region_bbox(
-        0.13, 0.25, 0.30, 0.52, is_stage_text_pixel
+        0.06, 0.15, 0.30, 0.52, is_stage_text_pixel
     )
     stage_pill_dark_pixels, _, _ = collect_region_bbox(
-        0.13, 0.25, 0.30, 0.52, is_stage_pill_dark_pixel
+        0.06, 0.15, 0.30, 0.52, is_stage_pill_dark_pixel
     )
-    main_hp_pixels, _, main_hp_bbox = collect_region_bbox(0.18, 0.40, 0.04, 0.18, is_hp_green)
+    main_hp_pixels, _, main_hp_bbox = collect_region_bbox(0.18, 0.40, 0.22, 0.36, is_hp_green)
     support_hp_pixels, _, _ = collect_region_bbox(0.32, 0.55, 0.10, 0.40, is_hp_green)
     enemy_hp_frame_pixels, _, enemy_hp_frame_bbox = collect_region_bbox(
-        0.72, 0.98, 0.04, 0.18, is_hp_frame_gray
+        0.72, 0.98, 0.22, 0.36, is_hp_frame_gray
     )
     deployable_teal_pixels, _, deployable_teal_bbox = collect_region_bbox(
         0.37, 0.58, 0.64, 0.98, is_deployable_teal
@@ -834,11 +950,11 @@ if check_party_layout:
     min_primary_steel_pixels = max(120, int(scene_width * scene_height * 0.012))
     min_party_centroid_gap = scene_width * 0.12
     min_stage_pill_text_pixels = 24
-    min_stage_pill_dark_pixels = max(180, int(scene_width * scene_height * 0.0075))
-    min_main_hp_pixels = max(80, int(scene_width * scene_height * 0.006))
+    min_stage_pill_dark_pixels = max(180, int(scene_width * scene_height * 0.0065))
+    min_main_hp_pixels = max(80, int(scene_width * scene_height * 0.0045))
     min_support_hp_pixels = max(60, int(scene_width * scene_height * 0.0015))
-    min_enemy_hp_frame_span = scene_width * 0.10
-    min_deployable_teal_pixels = max(10, int(scene_width * scene_height * 0.0008))
+    min_enemy_hp_frame_span = scene_width * 0.09
+    min_deployable_teal_pixels = max(10, int(scene_width * scene_height * 0.0004))
     min_impact_cold_pixels = max(24, int(scene_width * scene_height * 0.001))
     min_trajectory_cold_pixels = max(18, int(scene_width * scene_height * 0.0008))
 
@@ -880,7 +996,7 @@ if check_party_layout:
 
     stage_text_x, stage_text_y = stage_pill_text_centroid
     if not (
-        scene_left + scene_width * 0.15 <= stage_text_x <= scene_left + scene_width * 0.24
+        scene_left + scene_width * 0.07 <= stage_text_x <= scene_left + scene_width * 0.14
         and scene_top + scene_height * 0.38 <= stage_text_y <= scene_top + scene_height * 0.50
     ):
         print(
@@ -911,10 +1027,10 @@ if check_party_layout:
         sys.exit(1)
 
     main_hp_span = main_hp_bbox[2] - main_hp_bbox[0] + 1
-    if main_hp_span < scene_width * 0.12:
+    if main_hp_span < scene_width * 0.11:
         print(
             "primary hero HP bar is too narrow for the battle strip: "
-            f"main_hp_span={main_hp_span:.1f}, min={scene_width * 0.12:.1f}",
+            f"main_hp_span={main_hp_span:.1f}, min={scene_width * 0.11:.1f}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -1211,6 +1327,27 @@ if check_party_layout:
             )
             sys.exit(1)
 
+    rock_explosion_path = os.environ.get("TBH_ROCK_EXPLOSION_SCREENSHOT_PATH", "")
+    if rock_explosion_path:
+        damage_rock_explosion_pixels, _ = count_changed_utility_pixels(
+            rock_explosion_path,
+            "ground-slam-rock-explosion",
+            is_impact_rock_explosion,
+            x_start_ratio=0.36,
+            x_end_ratio=0.80,
+            y_start_ratio=0.24,
+            y_end_ratio=0.94,
+        )
+        min_damage_rock_explosion_pixels = max(22, int(scene_width * scene_height * 0.0009))
+        if damage_rock_explosion_pixels < min_damage_rock_explosion_pixels:
+            print(
+                "Ground Slam rock explosion cue is missing from the enemy hit lane: "
+                f"damage_rock_explosion_pixels={damage_rock_explosion_pixels}, "
+                f"min={min_damage_rock_explosion_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     shockwave_impact_path = os.environ.get("TBH_SHOCKWAVE_IMPACT_SCREENSHOT_PATH", "")
     if shockwave_impact_path:
         damage_shockwave_pixels, _ = count_changed_utility_pixels(
@@ -1247,6 +1384,83 @@ if check_party_layout:
             print(
                 "chaos impact cue is missing from the mid/enemy lane: "
                 f"damage_chaos_pixels={damage_chaos_pixels}, min={min_damage_chaos_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    def count_monster_incoming_pixels(path, label, predicate):
+        return count_changed_utility_pixels(
+            path,
+            label,
+            predicate,
+            x_start_ratio=0.14,
+            x_end_ratio=0.46,
+            y_start_ratio=0.24,
+            y_end_ratio=0.92,
+        )
+
+    min_monster_incoming_pixels = max(18, int(scene_width * scene_height * 0.0007))
+
+    monster_fire_incoming_path = os.environ.get("TBH_MONSTER_FIRE_INCOMING_SCREENSHOT_PATH", "")
+    if monster_fire_incoming_path:
+        monster_fire_incoming_pixels, _ = count_monster_incoming_pixels(
+            monster_fire_incoming_path,
+            "monster-fire-incoming",
+            is_impact_fire,
+        )
+        if monster_fire_incoming_pixels < min_monster_incoming_pixels:
+            print(
+                "monster fire incoming cue is missing from the player-side hit lane: "
+                f"monster_fire_incoming_pixels={monster_fire_incoming_pixels}, "
+                f"min={min_monster_incoming_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    monster_cold_incoming_path = os.environ.get("TBH_MONSTER_COLD_INCOMING_SCREENSHOT_PATH", "")
+    if monster_cold_incoming_path:
+        monster_cold_incoming_pixels, _ = count_monster_incoming_pixels(
+            monster_cold_incoming_path,
+            "monster-cold-incoming",
+            is_impact_cold,
+        )
+        if monster_cold_incoming_pixels < min_monster_incoming_pixels:
+            print(
+                "monster cold incoming cue is missing from the player-side hit lane: "
+                f"monster_cold_incoming_pixels={monster_cold_incoming_pixels}, "
+                f"min={min_monster_incoming_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    monster_lightning_incoming_path = os.environ.get("TBH_MONSTER_LIGHTNING_INCOMING_SCREENSHOT_PATH", "")
+    if monster_lightning_incoming_path:
+        monster_lightning_incoming_pixels, _ = count_monster_incoming_pixels(
+            monster_lightning_incoming_path,
+            "monster-lightning-incoming",
+            is_impact_lightning,
+        )
+        if monster_lightning_incoming_pixels < min_monster_incoming_pixels:
+            print(
+                "monster lightning incoming cue is missing from the player-side hit lane: "
+                f"monster_lightning_incoming_pixels={monster_lightning_incoming_pixels}, "
+                f"min={min_monster_incoming_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    monster_chaos_incoming_path = os.environ.get("TBH_MONSTER_CHAOS_INCOMING_SCREENSHOT_PATH", "")
+    if monster_chaos_incoming_path:
+        monster_chaos_incoming_pixels, _ = count_monster_incoming_pixels(
+            monster_chaos_incoming_path,
+            "monster-chaos-incoming",
+            is_impact_chaos,
+        )
+        if monster_chaos_incoming_pixels < min_monster_incoming_pixels:
+            print(
+                "monster chaos incoming cue is missing from the player-side hit lane: "
+                f"monster_chaos_incoming_pixels={monster_chaos_incoming_pixels}, "
+                f"min={min_monster_incoming_pixels}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -1335,6 +1549,73 @@ if check_party_layout:
             )
             sys.exit(1)
 
+    swift_surge_utility_path = os.environ.get("TBH_SWIFT_SURGE_UTILITY_SCREENSHOT_PATH", "")
+    if swift_surge_utility_path:
+        utility_swift_surge_pixels, _ = count_changed_utility_pixels(
+            swift_surge_utility_path,
+            "swift-surge",
+            is_utility_shield_blue,
+        )
+        min_utility_swift_surge_pixels = max(18, int(scene_width * scene_height * 0.00075))
+        if utility_swift_surge_pixels < min_utility_swift_surge_pixels:
+            print(
+                "Swift Surge utility cue is missing from the player utility lane: "
+                f"utility_swift_surge_pixels={utility_swift_surge_pixels}, "
+                f"min={min_utility_swift_surge_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    quick_loader_utility_path = os.environ.get("TBH_QUICK_LOADER_UTILITY_SCREENSHOT_PATH", "")
+    if quick_loader_utility_path:
+        utility_quick_loader_pixels, _ = count_changed_utility_pixels(
+            quick_loader_utility_path,
+            "quick-loader",
+            is_utility_heal_green,
+        )
+        min_utility_quick_loader_pixels = max(18, int(scene_width * scene_height * 0.00075))
+        if utility_quick_loader_pixels < min_utility_quick_loader_pixels:
+            print(
+                "Quick Loader utility cue is missing from the player utility lane: "
+                f"utility_quick_loader_pixels={utility_quick_loader_pixels}, "
+                f"min={min_utility_quick_loader_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    generals_cry_utility_path = os.environ.get("TBH_GENERALS_CRY_UTILITY_SCREENSHOT_PATH", "")
+    if generals_cry_utility_path:
+        utility_generals_cry_pixels, _ = count_changed_utility_pixels(
+            generals_cry_utility_path,
+            "generals-cry",
+            is_utility_gold,
+        )
+        min_utility_generals_cry_pixels = max(18, int(scene_width * scene_height * 0.00075))
+        if utility_generals_cry_pixels < min_utility_generals_cry_pixels:
+            print(
+                "General's Cry utility cue is missing from the player utility lane: "
+                f"utility_generals_cry_pixels={utility_generals_cry_pixels}, "
+                f"min={min_utility_generals_cry_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    bloodlust_utility_path = os.environ.get("TBH_BLOODLUST_UTILITY_SCREENSHOT_PATH", "")
+    if bloodlust_utility_path:
+        utility_bloodlust_pixels, _ = count_changed_utility_pixels(
+            bloodlust_utility_path,
+            "bloodlust",
+            is_utility_blood_red,
+        )
+        min_utility_bloodlust_pixels = max(18, int(scene_width * scene_height * 0.00075))
+        if utility_bloodlust_pixels < min_utility_bloodlust_pixels:
+            print(
+                "Bloodlust utility cue is missing from the player utility lane: "
+                f"utility_bloodlust_pixels={utility_bloodlust_pixels}, min={min_utility_bloodlust_pixels}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
 print(f"screenshot={path}")
 print(f"image_size={width}x{height}")
 print(f"mean_luma={mean_luma:.2f}")
@@ -1381,10 +1662,20 @@ if check_party_layout:
         print(f"damage_slam_jump_pixels={damage_slam_jump_pixels}")
     if os.environ.get("TBH_EARTHQUAKE_IMPACT_SCREENSHOT_PATH", ""):
         print(f"damage_earthquake_pixels={damage_earthquake_pixels}")
+    if os.environ.get("TBH_ROCK_EXPLOSION_SCREENSHOT_PATH", ""):
+        print(f"damage_rock_explosion_pixels={damage_rock_explosion_pixels}")
     if os.environ.get("TBH_SHOCKWAVE_IMPACT_SCREENSHOT_PATH", ""):
         print(f"damage_shockwave_pixels={damage_shockwave_pixels}")
     if os.environ.get("TBH_CHAOS_BURST_SCREENSHOT_PATH", ""):
         print(f"damage_chaos_pixels={damage_chaos_pixels}")
+    if os.environ.get("TBH_MONSTER_FIRE_INCOMING_SCREENSHOT_PATH", ""):
+        print(f"monster_fire_incoming_pixels={monster_fire_incoming_pixels}")
+    if os.environ.get("TBH_MONSTER_COLD_INCOMING_SCREENSHOT_PATH", ""):
+        print(f"monster_cold_incoming_pixels={monster_cold_incoming_pixels}")
+    if os.environ.get("TBH_MONSTER_LIGHTNING_INCOMING_SCREENSHOT_PATH", ""):
+        print(f"monster_lightning_incoming_pixels={monster_lightning_incoming_pixels}")
+    if os.environ.get("TBH_MONSTER_CHAOS_INCOMING_SCREENSHOT_PATH", ""):
+        print(f"monster_chaos_incoming_pixels={monster_chaos_incoming_pixels}")
     if os.environ.get("TBH_HEAL_UTILITY_SCREENSHOT_PATH", ""):
         print(f"utility_heal_pixels={utility_heal_pixels}")
     if os.environ.get("TBH_RESURRECTION_UTILITY_SCREENSHOT_PATH", ""):
@@ -1394,6 +1685,14 @@ if check_party_layout:
     if os.environ.get("TBH_SACRED_BLADE_UTILITY_SCREENSHOT_PATH", ""):
         print(f"utility_sacred_blade_pixels={utility_sacred_blade_pixels}")
         print(f"utility_sacred_blade_white_pixels={utility_sacred_blade_white_pixels}")
+    if os.environ.get("TBH_SWIFT_SURGE_UTILITY_SCREENSHOT_PATH", ""):
+        print(f"utility_swift_surge_pixels={utility_swift_surge_pixels}")
+    if os.environ.get("TBH_QUICK_LOADER_UTILITY_SCREENSHOT_PATH", ""):
+        print(f"utility_quick_loader_pixels={utility_quick_loader_pixels}")
+    if os.environ.get("TBH_GENERALS_CRY_UTILITY_SCREENSHOT_PATH", ""):
+        print(f"utility_generals_cry_pixels={utility_generals_cry_pixels}")
+    if os.environ.get("TBH_BLOODLUST_UTILITY_SCREENSHOT_PATH", ""):
+        print(f"utility_bloodlust_pixels={utility_bloodlust_pixels}")
 if status_row_path:
     print(f"status_row_non_dark_pixels={status_row_non_dark_pixels}")
     print(f"status_row_gold_pixels={status_row_gold_pixels}")

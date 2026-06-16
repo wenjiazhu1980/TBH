@@ -55,6 +55,7 @@ enum SelfTest {
         playerBattleStatusBadges()
         playerBattleDeployables()
         battleImpactCues()
+        battleIncomingCues()
         battleTrajectoryCues()
         battleUtilityCues()
         heroClasses()
@@ -139,6 +140,17 @@ enum SelfTest {
         expect(
             MenuBarPopoverLayout.scaleStep == 0.05,
             "panel scale uses deterministic five-percent steps"
+        )
+        expect(
+            OriginalControlShortcuts.scaleResetFunctionKeyCode == Int(NSF11FunctionKey) &&
+                OriginalControlShortcuts.scaleResetModifiers == [.shift],
+            "panel scale reset maps the checked original Shift+F11 shortcut"
+        )
+        expect(
+            CompletionSettlementLabels.deferButtonTitle == "稍后开启" &&
+                CompletionSettlementLabels.deferredConfirmationText.contains("保留结算状态") &&
+                CompletionSettlementLabels.startButtonTitle(for: ProgressTracker()) == "开启第 2 周目",
+            "completion settlement exposes explicit defer and next-playthrough choices"
         )
     }
 
@@ -262,28 +274,36 @@ enum SelfTest {
         let mappedIcons = RuneTreeNode.allCases.map { GameArt.runeTreeIconName(for: $0) }
 
         expect(
-            mappedIcons.allSatisfy { $0.hasPrefix("rune_") },
-            "modeled Rune Tree nodes resolve to bundled rune_* artwork"
+            mappedIcons.allSatisfy { $0.hasPrefix("source_rune_") },
+            "modeled Rune Tree nodes resolve to source Rune icon artwork"
         )
         expect(
-            Set(mappedIcons).count == GameArt.runeTreeIconNames.count,
-            "Rune Tree icon mapping covers the current bundled rune art subset"
+            Set(mappedIcons).isSubset(of: Set(GameArt.runeTreeIconNames)) &&
+                GameArt.runeTreeIconNames.count == SourceRuneCatalog.iconNames.count,
+            "Rune Tree icon resource list covers the checked source icon families"
         )
         expect(
             GameArt.runeTreeIconName(for: .partySlot2) == GameArt.runeTreeIconName(for: .partySlot3) &&
-                GameArt.runeTreeIconName(for: .partySlot2) == "rune_party_slot",
-            "Rune of Command formation slots share the party-slot icon"
+                GameArt.runeTreeIconName(for: .partySlot2) == "source_rune_UnlockArrangeSlotCount",
+            "Rune of Command formation slots share the checked source formation icon"
         )
         expect(
-            GameArt.runeTreeIconName(for: .activeSkillSlot2) == "rune_active_skill_slot" &&
-                GameArt.runeTreeIconName(for: .inventoryExpansion1) == "rune_inventory_capacity" &&
-                GameArt.runeTreeIconName(for: .openOneChestType) == "rune_open_one_chest_type" &&
-                GameArt.runeTreeIconName(for: .openAllChestTypes) == "rune_open_all_chest_types" &&
-                GameArt.runeTreeIconName(for: .offlineRewards) == "rune_offline_rewards" &&
-                GameArt.runeTreeIconName(for: .offlineGoldBoost) == "rune_offline_gold" &&
-                GameArt.runeTreeIconName(for: .offlineXPBoost) == "rune_offline_xp",
-            "modeled active-skill, inventory, chest-opening and offline Rune Tree nodes keep category-specific icons"
+            GameArt.runeTreeIconName(for: .activeSkillSlot2) == "source_rune_UnlockSkillSlotCount" &&
+                GameArt.runeTreeIconName(for: .inventoryExpansion1) == "source_rune_MaxInventorySlot" &&
+                GameArt.runeTreeIconName(for: .openOneChestType) == "source_rune_OpenOneTypeChestAllAtOnce" &&
+                GameArt.runeTreeIconName(for: .openAllChestTypes) == "source_rune_OpenAllTypeChestAllAtOnce" &&
+                GameArt.runeTreeIconName(for: .autoOpenNormalChests) == "source_rune_UnlockAutoOpenNormalChest" &&
+                GameArt.runeTreeIconName(for: .autoOpenStageBossChests) == "source_rune_UnlockAutoOpenStageBossChest" &&
+                GameArt.runeTreeIconName(for: .autoOpenActBossChests) == "source_rune_UnlockAutoOpenActBossChest" &&
+                GameArt.runeTreeIconName(for: .maxNormalChestStorage) == "source_rune_MaxAmountNormalChest" &&
+                GameArt.runeTreeIconName(for: .maxStageBossChestStorage) == "source_rune_MaxAmountStageBossChest" &&
+                GameArt.runeTreeIconName(for: .maxActBossChestStorage) == "source_rune_MaxAmountActBossChest" &&
+                GameArt.runeTreeIconName(for: .offlineRewards) == "source_rune_UnlockOfflineReward" &&
+                GameArt.runeTreeIconName(for: .offlineGoldBoost) == "source_rune_OfflineRewardGoldPercent" &&
+                GameArt.runeTreeIconName(for: .offlineXPBoost) == "source_rune_OfflineRewardExpPercent",
+            "modeled active-skill, inventory, chest-opening, chest-capacity and offline Rune Tree nodes use source category icons"
         )
+        expect(Set(mappedIcons).count == 14, "current modeled Rune Tree nodes use fourteen checked source icon families")
     }
 
     private static func battleSceneMetrics() {
@@ -302,8 +322,14 @@ enum SelfTest {
             "popover battle scene stays close to the official horizontal strip ratio"
         )
         expect(
-            BattleSceneMetrics.compactHeight <= 76,
-            "battle scene keeps a compact taskbar-style height"
+            BattleSceneMetrics.compactHeight >= 88 &&
+                BattleSceneMetrics.compactHeight <= 104,
+            "battle scene keeps a readable taskbar-style height"
+        )
+        expect(
+            BattleLogMetrics.visibleEntryLimit >= 8 &&
+                BattleLogMetrics.panelHeight >= 116,
+            "battle tab reserves visible space for recent combat log entries"
         )
         expect(
             BattleSceneMetrics.groundHeightRatio >= 0.20 &&
@@ -311,9 +337,9 @@ enum SelfTest {
             "battle scene reserves most vertical space for dark negative space above the lane"
         )
         expect(
-            BattleSceneMetrics.groundPlatformWidthRatio >= 0.68 &&
-                BattleSceneMetrics.groundPlatformWidthRatio <= 0.73,
-            "battle scene uses the official-style short central ground platform"
+            BattleSceneMetrics.groundPlatformWidthRatio >= 0.86 &&
+                BattleSceneMetrics.groundPlatformWidthRatio <= 0.94,
+            "battle scene keeps only subtle dark side margins around the ground platform"
         )
         expect(
             BattleSceneMetrics.sceneCornerRadius == 0 &&
@@ -335,6 +361,11 @@ enum SelfTest {
             BattleSceneMetrics.flameAnimationFrameRate >= 8 &&
                 BattleSceneMetrics.flameAnimationFrameRate <= 15,
             "battle scene flame animation uses a low-rate pixel cadence"
+        )
+        expect(
+            BattleSceneMetrics.combatAnimationFrameRate >= 8 &&
+                BattleSceneMetrics.combatAnimationFrameRate <= 15,
+            "battle scene combatants keep a low-rate pixel idle animation cadence"
         )
     }
 
@@ -359,14 +390,23 @@ enum SelfTest {
             .shieldCharge,
             .slamJump,
             .earthquakeImpact,
+            .earthquakeRockExplosion,
             .shockwaveImpact,
-            .chaosBurst
+            .chaosBurst,
+            .monsterFireIncoming,
+            .monsterColdIncoming,
+            .monsterLightningIncoming,
+            .monsterChaosIncoming
         ]
         let utilityFixtures: [BattleSceneSnapshot.Fixture] = [
             .healUtility,
             .resurrectionUtility,
             .shieldUtility,
-            .sacredBladeUtility
+            .sacredBladeUtility,
+            .swiftSurgeUtility,
+            .quickLoaderUtility,
+            .generalsCryUtility,
+            .bloodlustUtility
         ]
         let damageOutputURLs = damageFixtures.map { fixture in
             (
@@ -436,18 +476,21 @@ enum SelfTest {
             let damagePNGSizes = damageData.map(pngDimensions(data:))
             let utilityPNGSizes = utilityData.map(pngDimensions(data:))
             let heroClassPNGSizes = heroClassData.map(pngDimensions(data:))
+            let expectedScenePixelWidth = Int(BattleSceneMetrics.expectedPopoverContentWidth * 2)
+            let expectedScenePixelHeight = Int(BattleSceneMetrics.compactHeight * 2)
+            let expectedStatusRowPixelHeight = 56
             expect(
-                pngSize?.width == 620 &&
-                    pngSize?.height == 144 &&
-                    motionPNGSize?.width == 620 &&
-                    motionPNGSize?.height == 144 &&
-                    statusRowPNGSize?.width == 620 &&
-                    statusRowPNGSize?.height == 56 &&
-                    crowdedStatusRowPNGSize?.width == 620 &&
-                    crowdedStatusRowPNGSize?.height == 56 &&
-                    damagePNGSizes.allSatisfy { $0?.width == 620 && $0?.height == 144 } &&
-                    utilityPNGSizes.allSatisfy { $0?.width == 620 && $0?.height == 144 } &&
-                    heroClassPNGSizes.allSatisfy { $0?.width == 620 && $0?.height == 144 } &&
+                pngSize?.width == expectedScenePixelWidth &&
+                    pngSize?.height == expectedScenePixelHeight &&
+                    motionPNGSize?.width == expectedScenePixelWidth &&
+                    motionPNGSize?.height == expectedScenePixelHeight &&
+                    statusRowPNGSize?.width == expectedScenePixelWidth &&
+                    statusRowPNGSize?.height == expectedStatusRowPixelHeight &&
+                    crowdedStatusRowPNGSize?.width == expectedScenePixelWidth &&
+                    crowdedStatusRowPNGSize?.height == expectedStatusRowPixelHeight &&
+                    damagePNGSizes.allSatisfy { $0?.width == expectedScenePixelWidth && $0?.height == expectedScenePixelHeight } &&
+                    utilityPNGSizes.allSatisfy { $0?.width == expectedScenePixelWidth && $0?.height == expectedScenePixelHeight } &&
+                    heroClassPNGSizes.allSatisfy { $0?.width == expectedScenePixelWidth && $0?.height == expectedScenePixelHeight } &&
                     data.count > 1_024,
                 "battle scene snapshot renderer produces an audit-ready PNG"
             )
@@ -806,6 +849,12 @@ enum SelfTest {
         )
         expect(
             BattleImpactCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "大地强击岩石爆炸")
+            ) == .earthquakeRockExplosion,
+            "Ground Slam rock explosion exposes a dedicated rock impact cue"
+        )
+        expect(
+            BattleImpactCue.visible(
                 for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "火球术")
             ) == .fireBurst,
             "fire damaging skills expose a fire impact cue"
@@ -903,6 +952,64 @@ enum SelfTest {
         )
     }
 
+    private static func battleIncomingCues() {
+        print("[BattleIncomingCues]")
+
+        expect(
+            BattleIncomingCue.visible(
+                for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false)
+            ) == .physical,
+            "generic monster damage exposes a separate physical incoming cue"
+        )
+        expect(
+            BattleIncomingCue.visible(
+                for: BattleLogEntry(
+                    attacker: .monster,
+                    damage: 100,
+                    isCrit: false,
+                    damageElement: .fire
+                )
+            ) == .fire &&
+                BattleIncomingCue.visible(
+                    for: BattleLogEntry(
+                        attacker: .monster,
+                        damage: 100,
+                        isCrit: false,
+                        damageElement: .cold
+                    )
+                ) == .cold &&
+                BattleIncomingCue.visible(
+                    for: BattleLogEntry(
+                        attacker: .monster,
+                        damage: 100,
+                        isCrit: false,
+                        damageElement: .lightning
+                    )
+                ) == .lightning &&
+                BattleIncomingCue.visible(
+                    for: BattleLogEntry(
+                        attacker: .monster,
+                        damage: 100,
+                        isCrit: false,
+                        damageElement: .chaos
+                    )
+                ) == .chaos,
+            "source monster attack elements expose distinct incoming cues"
+        )
+        expect(
+            BattleIncomingCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "火球术")
+            ) == nil &&
+                BattleIncomingCue.visible(
+                    for: BattleLogEntry(attacker: .monster, damage: 0, isCrit: false, damageElement: .fire)
+                ) == nil &&
+                BattleIncomingCue.visible(
+                    for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false, skillName: "治愈", kind: .heal)
+                ) == nil,
+            "incoming cues stay limited to damaging monster hits"
+        )
+    }
+
     private static func battleTrajectoryCues() {
         print("[BattleTrajectoryCues]")
 
@@ -983,6 +1090,12 @@ enum SelfTest {
                 for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "大地强击")
             ) == .groundRupture,
             "Ground Slam exposes a dedicated ground-rupture trajectory cue"
+        )
+        expect(
+            BattleTrajectoryCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "大地强击岩石爆炸")
+            ) == .rockBurst,
+            "Ground Slam rock explosion exposes a dedicated rock-burst trajectory cue"
         )
         expect(
             BattleTrajectoryCue.visible(
@@ -1088,7 +1201,31 @@ enum SelfTest {
         )
         expect(
             BattleUtilityCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 0, isCrit: false, skillName: "迅捷觉醒", kind: .buff)
+            ) == .swiftSurgeHaste,
+            "Swift Surge exposes a dedicated haste utility cue"
+        )
+        expect(
+            BattleUtilityCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 0, isCrit: false, skillName: "快速装填", kind: .buff)
+            ) == .quickLoaderHaste,
+            "Quick Loader exposes a dedicated reload-haste utility cue"
+        )
+        expect(
+            BattleUtilityCue.visible(
                 for: BattleLogEntry(attacker: .hero, damage: 0, isCrit: false, skillName: "将军怒吼", kind: .buff)
+            ) == .generalsCryRoar,
+            "General's Cry exposes a dedicated roar utility cue"
+        )
+        expect(
+            BattleUtilityCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 0, isCrit: false, skillName: "嗜血", kind: .buff)
+            ) == .bloodlustSurge,
+            "Bloodlust exposes a dedicated surge utility cue"
+        )
+        expect(
+            BattleUtilityCue.visible(
+                for: BattleLogEntry(attacker: .hero, damage: 0, isCrit: false, skillName: "力量祝福", kind: .buff)
             ) == .buffAura,
             "other buff entries expose a generic utility aura"
         )
@@ -1532,6 +1669,62 @@ enum SelfTest {
         let woundedRetributionHits = woundedRetributionBattle.log.filter { $0.skillName == "报应打击" && $0.kind == .damage }.count
         expect(healthyRetributionHits >= 2, "Retribution Strike applies multiple checked melee hits")
         expect(woundedRetributionHits > healthyRetributionHits && woundedRetributionHits >= 5, "Retribution Strike increases hit count when hero HP is low")
+
+        func makeSkillRangeMonsters() -> [Monster] {
+            (1...3).map { index in
+                Monster(
+                    id: "skill-range-\(index)",
+                    name: "技能范围训练 \(index)",
+                    hp: 1_000_000,
+                    atk: 0,
+                    def: 0,
+                    spd: 1,
+                    critRate: 0,
+                    xpReward: 0,
+                    goldReward: 0,
+                    lootTableID: "none"
+                )
+            }
+        }
+        var retributionLoadout = ActiveSkillLoadouts()
+        retributionLoadout.setSkills(["10301"], for: .knight)
+        let baselineRangeBattle = Battle(
+            hero: Hero(),
+            monsters: makeSkillRangeMonsters(),
+            party: HeroParty(primaryClass: .knight),
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: retributionLoadout
+        )
+        for _ in 0..<14 {
+            baselineRangeBattle.update(deltaTime: 1)
+            if baselineRangeBattle.log.contains(where: { $0.skillName == "报应打击" && $0.kind == .damage }) {
+                break
+            }
+        }
+
+        let skillRangeHero = Hero()
+        skillRangeHero.unlockedPassiveSkillIDs = ["101081"]
+        let expandedRangeBattle = Battle(
+            hero: skillRangeHero,
+            monsters: makeSkillRangeMonsters(),
+            party: HeroParty(primaryClass: .knight),
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: retributionLoadout
+        )
+        for _ in 0..<14 {
+            expandedRangeBattle.update(deltaTime: 1)
+            if expandedRangeBattle.log.contains(where: { $0.skillName == "报应打击" && $0.kind == .damage }) {
+                break
+            }
+        }
+
+        expect(
+            baselineRangeBattle.enemyStates.filter { $0.hp < $0.maxHP }.count == 1 &&
+                expandedRangeBattle.enemyStates.filter { $0.hp < $0.maxHP }.count >= 2 &&
+                expandedRangeBattle.log.filter { $0.skillName == "报应打击" && $0.kind == .damage }.count >
+                baselineRangeBattle.log.filter { $0.skillName == "报应打击" && $0.kind == .damage }.count,
+            "Skill Range Expansion extends focused melee skill hits to an additional live enemy"
+        )
 
         let aegisKnight = Hero()
         let aegisMonster = Monster(
@@ -2002,6 +2195,34 @@ enum SelfTest {
             activeSkillSlotCount: 1,
             activeSkillLoadouts: supportRapidFireLoadouts
         )
+        let supportRapidFireTriggerEvery = max(
+            1,
+            HeroSkills.named(for: .ranger).first { $0.id == "20101" }?.triggerEvery ?? 3
+        )
+        while supportRapidFireBattle.log.filter({
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == nil &&
+                $0.kind == .damage
+        }).count < supportRapidFireTriggerEvery - 1 {
+            supportRapidFireBattle.update(deltaTime: 1)
+        }
+        let rapidFireCountBeforeTrigger = supportRapidFireBattle.log.filter {
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == "快速射击" &&
+                $0.kind == .damage
+        }.count
+        while supportRapidFireBattle.log.filter({
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == nil &&
+                $0.kind == .damage
+        }).count < supportRapidFireTriggerEvery {
+            supportRapidFireBattle.update(deltaTime: 1)
+        }
+        let rapidFireCountAfterTrigger = supportRapidFireBattle.log.filter {
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == "快速射击" &&
+                $0.kind == .damage
+        }.count
         for _ in 0..<20 {
             supportRapidFireBattle.update(deltaTime: 1)
             if supportRapidFireBattle.log.filter({
@@ -2013,7 +2234,9 @@ enum SelfTest {
             }
         }
         expect(
-            supportRapidFireBattle.log.filter {
+            rapidFireCountBeforeTrigger == 0 &&
+                rapidFireCountAfterTrigger > rapidFireCountBeforeTrigger &&
+                supportRapidFireBattle.log.filter {
                 $0.attacker == .support(.ranger) &&
                     $0.skillName == "快速射击" &&
                     $0.kind == .damage
@@ -2022,7 +2245,7 @@ enum SelfTest {
                     $0.attacker == .hero &&
                         $0.skillName == "快速射击"
                 },
-            "support attack-count skills trigger from support attacks instead of the main hero skill path"
+            "support attack-count skills trigger from support attacks at the checked cadence instead of the main hero skill path"
         )
 
         let snowstormHero = Hero()
@@ -2454,6 +2677,64 @@ enum SelfTest {
             groundSlamBattle.log.filter { $0.skillName == "大地强击" && $0.kind == .damage }.count >= 3 &&
                 groundSlamBattle.enemyStates.allSatisfy { $0.hp < $0.maxHP },
             "Ground Slam applies checked range damage across the live wave"
+        )
+
+        var rockExplosionLoadouts = ActiveSkillLoadouts()
+        rockExplosionLoadouts.setSkills(["60401", "60501"], for: .slayer)
+        let rockExplosionHero = Hero()
+        rockExplosionHero.changeClass(to: .slayer)
+        _ = rockExplosionHero.equipment.equip(Item(
+            id: "ground-slam-rock-speed-boots",
+            name: "大地强击岩石测试靴",
+            rarity: .common,
+            slot: .boots,
+            stats: ItemStats(bonusSPD: 100),
+            description: "测试用"
+        ))
+        let rockExplosionMonsters = (1...3).map { index in
+            Monster(
+                id: "ground-slam-rock-\(index)",
+                name: "大地强击岩石训练 \(index)",
+                hp: 100_000,
+                atk: 1,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            )
+        }
+        let rockExplosionBattle = Battle(
+            hero: rockExplosionHero,
+            monsters: rockExplosionMonsters,
+            party: HeroParty(primaryClass: .slayer),
+            activeSkillSlotCount: 2,
+            activeSkillLoadouts: rockExplosionLoadouts
+        )
+        var rockChargesWereArmed = false
+        var maxRockCharges = 0
+        var enemyHPAfterRockArm = rockExplosionBattle.enemyStates.map(\.hp).reduce(0, +)
+        for _ in 0..<80 {
+            rockExplosionBattle.update(deltaTime: 0.25)
+            maxRockCharges = max(maxRockCharges, rockExplosionBattle.groundSlamRockCharges)
+            if !rockChargesWereArmed, rockExplosionBattle.groundSlamRockCharges > 0 {
+                rockChargesWereArmed = true
+                enemyHPAfterRockArm = rockExplosionBattle.enemyStates.map(\.hp).reduce(0, +)
+            }
+            if rockChargesWereArmed &&
+                rockExplosionBattle.log.contains(where: { $0.skillName == "大地强击岩石爆炸" && $0.kind == .damage }) {
+                break
+            }
+        }
+        let enemyHPAfterRockExplosion = rockExplosionBattle.enemyStates.map(\.hp).reduce(0, +)
+        expect(
+            rockChargesWereArmed &&
+                maxRockCharges > 0 &&
+                rockExplosionBattle.groundSlamRockCharges == 0 &&
+                rockExplosionBattle.log.filter { $0.skillName == "大地强击岩石爆炸" && $0.kind == .damage }.count >= 3 &&
+                enemyHPAfterRockExplosion < enemyHPAfterRockArm,
+            "Ground Slam rock charges are consumed by later physical AOE and damage the live wave"
         )
 
         let axeSpinHero = Hero()
@@ -3001,6 +3282,40 @@ enum SelfTest {
             },
             "source base attack rows resolve to runtime element and delivery metadata"
         )
+        let expectedMonsterAttacks: [(String, String, SkillDamageElement)] = [
+            ("燃烧的地狱祭司", "301015", .fire),
+            ("冰冻的地狱祭司", "301025", .cold),
+            ("电流的地狱祭司", "301035", .lightning),
+            ("混沌的地狱祭司", "301045", .chaos)
+        ]
+        expect(
+            expectedMonsterAttacks.allSatisfy { name, sourceID, damageElement in
+                for stage in StageDefinition.all {
+                    for difficulty in Difficulty.allCases {
+                        for encounterIndex in 0..<stage.clearTarget(for: difficulty) {
+                            let monster = stage.spawnMonster(
+                                difficulty: difficulty,
+                                encounterIndex: encounterIndex
+                            )
+                            if monster.name == name {
+                                return monster.sourceSkillID == sourceID &&
+                                    monster.sourceSkill?.activation == .baseAttack &&
+                                    monster.sourceDamageElement == damageElement
+                            }
+                        }
+                    }
+                }
+                return false
+            },
+            "stage elemental hell priests resolve to checked source monster attack metadata"
+        )
+        let firstStageMonster = StageDefinition.stage(act: .forest, number: 1).spawnMonster(difficulty: .normal)
+        expect(
+            firstStageMonster.name == "哥布林盗贼" &&
+                firstStageMonster.sourceSkillID == nil &&
+                firstStageMonster.sourceDamageElement == .none,
+            "unmapped stage monsters stay generic instead of fabricating source attack metadata"
+        )
         expect(SourceSkillCatalog.skill(id: "999999") == nil, "unknown source skill IDs do not resolve")
     }
 
@@ -3096,6 +3411,399 @@ enum SelfTest {
                 PassiveSkills.heroClass(for: "999999") == nil,
             "unknown passive skill IDs do not resolve to fabricated source rows"
         )
+
+        let knight = Hero()
+        knight.unlockedPassiveSkillIDs = [
+            "101001", // passiveAttackDamage
+            "101002", // passiveMaxHp
+            "101011", // passiveArmor
+            "101061", // passiveAttackSpeed
+            "101071", // passiveDamageReduction
+            "201011"  // different class, must be ignored
+        ]
+        expect(knight.maxHP == 145, "unlocked Knight passive MaxHp changes runtime max HP")
+        expect(knight.attack == 19, "unlocked Knight passive AttackDamage changes runtime attack")
+        expect(knight.defense == 55, "unlocked Knight passive Armor changes runtime defense")
+        expect(knight.speed == 13, "unlocked Knight passive AttackSpeed changes runtime speed")
+        expect(
+            abs(knight.passiveRuntimeEffects.passiveDamageReduction - 0.20) < 0.0001,
+            "unlocked Knight passive DamageReduction is exposed to battle damage mitigation"
+        )
+        expect(
+            abs(knight.critRate - knight.baseStats.critRate) < 0.0001,
+            "passive runtime effects ignore unlocked IDs from another hero class"
+        )
+
+        let blockEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101022", "101052"],
+            heroClass: .knight
+        )
+        expect(
+            abs(blockEffects.passiveBlockChance - 0.006) < 0.0001,
+            "unlocked Knight passives expose block chance runtime hooks"
+        )
+
+        let elementalResistanceEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101062"],
+            heroClass: .knight
+        )
+        expect(
+            abs(elementalResistanceEffects.passiveAllElementalResistance - 0.30) < 0.0001,
+            "unlocked Knight passives expose all-elemental-resistance runtime hooks"
+        )
+
+        let skillRangeEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101081"],
+            heroClass: .knight
+        )
+        expect(
+            abs(skillRangeEffects.passiveSkillRangeExpansion - 0.30) < 0.0001,
+            "unlocked Knight passives expose skill-range expansion runtime hooks"
+        )
+
+        let areaEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101082"],
+            heroClass: .knight
+        )
+        expect(
+            abs(areaEffects.passiveAreaOfEffect - 0.50) < 0.0001,
+            "unlocked Knight passives expose area-of-effect runtime hooks"
+        )
+
+        let ranger = Hero()
+        ranger.changeClass(to: .ranger)
+        ranger.unlockedPassiveSkillIDs = [
+            "201011", // passiveCriticalChance
+            "201012"  // passiveCriticalDamage
+        ]
+        expect(
+            abs(ranger.critRate - 0.06) < 0.0001,
+            "unlocked Ranger passive CriticalChance changes runtime crit rate"
+        )
+        expect(
+            abs(ranger.critDamage - 2.8) < 0.0001,
+            "unlocked Ranger passive CriticalDamage changes runtime crit damage"
+        )
+
+        let sustainEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101012", "101021", "101051"],
+            heroClass: .knight
+        )
+        expect(
+            sustainEffects.passiveHpRegenPerSec == 100 &&
+                sustainEffects.passiveAddHpPerKill == 8 &&
+                sustainEffects.passiveAddHpPerHit == 0,
+            "unlocked Knight sustain passives expose regen and kill-heal runtime hooks"
+        )
+
+        let dodgeEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["201021", "201031", "201041", "201081"],
+            heroClass: .ranger
+        )
+        expect(
+            abs(dodgeEffects.passiveDodgeChance - 0.006) < 0.0001 &&
+                abs(dodgeEffects.passiveElementalDodgeChance - 0.003) < 0.0001 &&
+                abs(dodgeEffects.passiveMaxDodgeChance - 0.001) < 0.0001,
+            "unlocked Ranger passives expose dodge chance, elemental dodge chance and max dodge cap runtime hooks"
+        )
+
+        let sorcererEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["301002", "301021", "301022", "301031", "301041"],
+            heroClass: .sorcerer
+        )
+        expect(
+            abs(sorcererEffects.passiveCooldownReduction - 0.30) < 0.0001 &&
+                abs(sorcererEffects.passiveFireDamagePercent - 1.0) < 0.0001 &&
+                abs(sorcererEffects.passiveColdDamagePercent - 1.0) < 0.0001 &&
+                abs(sorcererEffects.passiveLightningDamagePercent - 1.0) < 0.0001,
+            "unlocked Sorcerer passives expose cooldown and elemental damage runtime hooks"
+        )
+
+        let castSpeedEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["301051", "301082"],
+            heroClass: .sorcerer
+        )
+        expect(
+            abs(castSpeedEffects.passiveCastSpeed - 1.40) < 0.0001,
+            "unlocked Sorcerer passives expose cast-speed runtime hooks"
+        )
+
+        let rangerEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["201022", "201052", "201061"],
+            heroClass: .ranger
+        )
+        expect(
+            abs(rangerEffects.passiveIncreaseProjectileDamage - 1.5) < 0.0001 &&
+                abs(rangerEffects.passiveHpLeech - 0.05) < 0.0001 &&
+                abs(rangerEffects.passiveIncreaseAreaOfEffectDamage - 1.5) < 0.0001,
+            "unlocked Ranger passives expose projectile, life-leech and area-damage runtime hooks"
+        )
+
+        let priestEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["401012", "401022", "401032", "401061"],
+            heroClass: .priest
+        )
+        expect(
+            priestEffects.passiveDamageAbsorption == 10 &&
+                abs(priestEffects.passiveSkillHealIncrease - 0.7) < 0.0001 &&
+                abs(priestEffects.passiveCooldownReduction - 0.2) < 0.0001,
+            "unlocked Priest passives expose damage absorption, healing and cooldown runtime hooks"
+        )
+
+        let priestCastEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["401041", "401072"],
+            heroClass: .priest
+        )
+        expect(
+            abs(priestCastEffects.passiveCastSpeed - 1.40) < 0.0001,
+            "unlocked Priest passives expose cast-speed runtime hooks"
+        )
+
+        let slayerEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["601051", "601072"],
+            heroClass: .slayer
+        )
+        expect(
+            abs(slayerEffects.passiveIncreaseAreaOfEffectDamage - 1.5) < 0.0001 &&
+                abs(slayerEffects.passiveSkillDurationIncrease - 0.8) < 0.0001,
+            "unlocked Slayer passives expose area-damage and duration runtime hooks"
+        )
+
+        let movementEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["201042", "201082"],
+            heroClass: .ranger
+        )
+        let movementHero = Hero()
+        movementHero.changeClass(to: .ranger)
+        movementHero.unlockedPassiveSkillIDs = ["201042", "201082"]
+        expect(
+            movementEffects.passiveMovementSpeed == 40 &&
+                abs(movementEffects.passiveMovementSpeedMultiplier - 1.0) < 0.0001 &&
+                movementHero.speed == 50,
+            "unlocked Ranger flat movement-speed passives feed the runtime speed scalar"
+        )
+
+        let slayerMovementEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["601062"],
+            heroClass: .slayer
+        )
+        let slayerMovementHero = Hero()
+        slayerMovementHero.changeClass(to: .slayer)
+        slayerMovementHero.unlockedPassiveSkillIDs = ["601062"]
+        expect(
+            slayerMovementEffects.passiveMovementSpeed == 0 &&
+                abs(slayerMovementEffects.passiveMovementSpeedMultiplier - 1.20) < 0.0001 &&
+                slayerMovementHero.speed == 9,
+            "unlocked Slayer additive movement-speed passive feeds the runtime speed multiplier"
+        )
+
+        let leechHero = Hero()
+        leechHero.changeClass(to: .ranger)
+        leechHero.unlockedPassiveSkillIDs = ["201052"]
+        _ = leechHero.equipment.equip(Item(
+            id: "leech-bow",
+            name: "吸血测试弓",
+            rarity: .common,
+            slot: .weapon,
+            stats: ItemStats(bonusATK: 1_000),
+            description: "",
+            equipmentType: .bow
+        ))
+        leechHero.takeDamage(80)
+        let woundedHP = leechHero.currentHP
+        let leechBattle = Battle(
+            hero: leechHero,
+            monster: Monster(
+                id: "leech-dummy",
+                name: "吸血测试目标",
+                hp: 10_000,
+                atk: 0,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            ),
+            party: HeroParty(primaryClass: .ranger),
+            activeSkillSlotCount: 1
+        )
+        leechBattle.update(deltaTime: 1)
+        expect(
+            leechHero.currentHP > woundedHP && leechBattle.heroHP == leechHero.currentHP,
+            "unlocked HpLeech passive heals the main hero from actual hero damage dealt"
+        )
+
+        expect(
+            Battle.modifiedIncomingDamage(
+                200,
+                continuousIncomingDamageMultiplier: 1.0,
+                passiveDamageReduction: 0.25,
+                passiveDamageAbsorption: 10
+            ) == 140,
+            "unlocked DamageAbsorption passive reduces incoming damage after percent mitigation"
+        )
+
+        expect(
+            Battle.modifiedIncomingDamage(
+                200,
+                continuousIncomingDamageMultiplier: 1.0,
+                passiveDamageReduction: 0.25,
+                passiveDamageAbsorption: 10,
+                passiveAllElementalResistance: 0.20,
+                damageElement: .fire
+            ) == 110 &&
+                Battle.modifiedIncomingDamage(
+                    200,
+                    continuousIncomingDamageMultiplier: 1.0,
+                    passiveDamageReduction: 0.25,
+                    passiveDamageAbsorption: 10,
+                    passiveAllElementalResistance: 0.20,
+                    damageElement: .cold
+                ) == 110 &&
+                Battle.modifiedIncomingDamage(
+                    200,
+                    continuousIncomingDamageMultiplier: 1.0,
+                    passiveDamageReduction: 0.25,
+                    passiveDamageAbsorption: 10,
+                    passiveAllElementalResistance: 0.20,
+                    damageElement: .lightning
+                ) == 110 &&
+                Battle.modifiedIncomingDamage(
+                    200,
+                    continuousIncomingDamageMultiplier: 1.0,
+                    passiveDamageReduction: 0.25,
+                    passiveDamageAbsorption: 10,
+                    passiveAllElementalResistance: 0.20,
+                    damageElement: .physical
+                ) == 140 &&
+                Battle.modifiedIncomingDamage(
+                    200,
+                    continuousIncomingDamageMultiplier: 1.0,
+                    passiveDamageReduction: 0.25,
+                    passiveDamageAbsorption: 10,
+                    passiveAllElementalResistance: 0.20,
+                    damageElement: .chaos
+                ) == 140,
+            "unlocked AllElementalResistance passive reduces only fire, cold and lightning incoming damage"
+        )
+
+        func monsterHit(sourceSkillID: String) -> BattleLogEntry? {
+            let hero = Hero()
+            hero.unlockedPassiveSkillIDs = ["101062"]
+            let monster = Monster(
+                id: "source-\(sourceSkillID)",
+                name: "源技能怪物",
+                hp: 100_000,
+                atk: 400,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 1,
+                goldReward: 1,
+                lootTableID: "none",
+                sourceSkillID: sourceSkillID
+            )
+            let battle = Battle(
+                hero: hero,
+                monster: monster,
+                party: HeroParty(primaryClass: .knight),
+                activeSkillSlotCount: 1
+            )
+            battle.update(deltaTime: 0.01)
+            return battle.log.last { $0.attacker == .monster }
+        }
+
+        let fireMonsterHit = monsterHit(sourceSkillID: "301015")
+        let chaosMonsterHit = monsterHit(sourceSkillID: "301045")
+        expect(
+            fireMonsterHit?.damageElement == .fire &&
+                chaosMonsterHit?.damageElement == .chaos &&
+                (fireMonsterHit?.damage ?? 0) > 0 &&
+                (chaosMonsterHit?.damage ?? 0) > 0 &&
+                (fireMonsterHit?.damage ?? Int.max) < (chaosMonsterHit?.damage ?? 0),
+            "monster source attack elements feed battle log metadata and incoming elemental resistance"
+        )
+
+        expect(
+            Battle.incomingAttackWasDodged(roll: 0.005, passiveDodgeChance: 0.006) &&
+                !Battle.incomingAttackWasDodged(roll: 0.006, passiveDodgeChance: 0.006) &&
+                Battle.incomingAttackWasDodged(roll: 0.79, passiveDodgeChance: 2.0) &&
+                !Battle.incomingAttackWasDodged(roll: 0.81, passiveDodgeChance: 2.0) &&
+                Battle.incomingAttackWasDodged(
+                    roll: 0.8005,
+                    passiveDodgeChance: 2.0,
+                    passiveMaxDodgeChance: 0.001
+                ) &&
+                !Battle.incomingAttackWasDodged(
+                    roll: 0.8015,
+                    passiveDodgeChance: 2.0,
+                    passiveMaxDodgeChance: 0.001
+                ) &&
+                Battle.incomingAttackWasDodged(
+                    roll: 0.008,
+                    passiveDodgeChance: 0.006,
+                    passiveElementalDodgeChance: 0.003,
+                    damageElement: .fire
+                ) &&
+                Battle.incomingAttackWasDodged(
+                    roll: 0.008,
+                    passiveDodgeChance: 0.006,
+                    passiveElementalDodgeChance: 0.003,
+                    damageElement: .cold
+                ) &&
+                Battle.incomingAttackWasDodged(
+                    roll: 0.008,
+                    passiveDodgeChance: 0.006,
+                    passiveElementalDodgeChance: 0.003,
+                    damageElement: .lightning
+                ) &&
+                !Battle.incomingAttackWasDodged(
+                    roll: 0.008,
+                    passiveDodgeChance: 0.006,
+                    passiveElementalDodgeChance: 0.003,
+                    damageElement: .physical
+                ) &&
+                !Battle.incomingAttackWasDodged(
+                    roll: 0.008,
+                    passiveDodgeChance: 0.006,
+                    passiveElementalDodgeChance: 0.003,
+                    damageElement: .chaos
+                ),
+            "unlocked DodgeChance passive can avoid incoming attacks before damage calculation, ElementalDodgeChance applies only to elemental damage and MaxDodgeChance raises its cap"
+        )
+
+        expect(
+            Battle.incomingAttackWasBlocked(roll: 0.005, passiveBlockChance: 0.006) &&
+                !Battle.incomingAttackWasBlocked(roll: 0.006, passiveBlockChance: 0.006) &&
+                Battle.incomingAttackWasBlocked(roll: 0.79, passiveBlockChance: 2.0) &&
+                !Battle.incomingAttackWasBlocked(roll: 0.81, passiveBlockChance: 2.0),
+            "unlocked BlockChance passive can block incoming attacks before damage calculation"
+        )
+
+        expect(
+            abs(Battle.modifiedSkillCooldown(
+                baseCooldown: 10,
+                passiveCooldownReduction: 0.20,
+                passiveCastSpeed: 0
+            ) - 8.0) < 0.0001 &&
+                abs(Battle.modifiedSkillCooldown(
+                    baseCooldown: 10,
+                    passiveCooldownReduction: 0.20,
+                    passiveCastSpeed: 1.0
+                ) - 4.0) < 0.0001 &&
+                abs(Battle.modifiedSkillCooldown(
+                    baseCooldown: 10,
+                    passiveCooldownReduction: -0.20,
+                    passiveCastSpeed: -1.0
+                ) - 10.0) < 0.0001 &&
+                Battle.modifiedSkillCooldown(
+                    baseCooldown: 2,
+                    passiveCooldownReduction: 0.80,
+                    passiveCastSpeed: 2.0
+                ) == 1,
+            "unlocked CastSpeed passive shortens cooldown skill intervals within the current cooldown scaffold"
+        )
     }
 
     private static func runeTree() {
@@ -3131,6 +3839,28 @@ enum SelfTest {
             "runtime Rune Tree nodes map back to checked source catalog IDs"
         )
         expect(
+            SourceRuneCatalog.runtimeModeledNodes.count == RuneTreeNode.allCases.count &&
+                SourceRuneCatalog.runtimeModeledNodes.count == 15,
+            "Rune Tree runtime coverage remains explicit at 15 checked source nodes"
+        )
+        expect(
+            SourceRuneCatalog.runtimeUnmodeledNodes.count == SourceRuneCatalog.expectedNodeCount - RuneTreeNode.allCases.count,
+            "Rune Tree keeps the 182 currently data-only source nodes explicit"
+        )
+        expect(
+            SourceRuneCatalog.runtimeModeledIconNames.count == 14 &&
+                SourceRuneCatalog.runtimeUnmodeledOnlyIconNames.count == 25 &&
+                SourceRuneCatalog.runtimeSharedModeledAndUnmodeledIconNames == [
+                    "MaxAmountActBossChest",
+                    "MaxAmountNormalChest",
+                    "MaxAmountStageBossChest",
+                    "MaxInventorySlot",
+                    "OfflineRewardExpPercent",
+                    "OfflineRewardGoldPercent"
+                ],
+            "Rune Tree runtime coverage distinguishes modeled, data-only and shared source icon families"
+        )
+        expect(
             SourceRuneCatalog.byID[RuneTreeNode.partySlot2.sourceRuneID]?.enName == "Rune of Command" &&
                 SourceRuneCatalog.byID[RuneTreeNode.partySlot3.sourceRuneID]?.enName == "Rune of Command" &&
                 SourceRuneCatalog.byID[RuneTreeNode.activeSkillSlot2.sourceRuneID]?.enName == "Rune of Awakening",
@@ -3149,8 +3879,17 @@ enum SelfTest {
         )
         expect(
             SourceRuneCatalog.byID[RuneTreeNode.openOneChestType.sourceRuneID]?.iconName == "OpenOneTypeChestAllAtOnce" &&
-                SourceRuneCatalog.byID[RuneTreeNode.openAllChestTypes.sourceRuneID]?.iconName == "OpenAllTypeChestAllAtOnce",
+                SourceRuneCatalog.byID[RuneTreeNode.openAllChestTypes.sourceRuneID]?.iconName == "OpenAllTypeChestAllAtOnce" &&
+                SourceRuneCatalog.byID[RuneTreeNode.autoOpenNormalChests.sourceRuneID]?.iconName == "UnlockAutoOpenNormalChest" &&
+                SourceRuneCatalog.byID[RuneTreeNode.autoOpenStageBossChests.sourceRuneID]?.iconName == "UnlockAutoOpenStageBossChest" &&
+                SourceRuneCatalog.byID[RuneTreeNode.autoOpenActBossChests.sourceRuneID]?.iconName == "UnlockAutoOpenActBossChest",
             "chest-opening runtime runes resolve to checked source rows and icon families"
+        )
+        expect(
+            SourceRuneCatalog.byID[RuneTreeNode.maxNormalChestStorage.sourceRuneID]?.iconName == "MaxAmountNormalChest" &&
+                SourceRuneCatalog.byID[RuneTreeNode.maxStageBossChestStorage.sourceRuneID]?.iconName == "MaxAmountStageBossChest" &&
+                SourceRuneCatalog.byID[RuneTreeNode.maxActBossChestStorage.sourceRuneID]?.iconName == "MaxAmountActBossChest",
+            "chest-capacity runtime runes resolve to checked source rows and icon families"
         )
         expect(
             RuneTreeNode.partySlot2.goldCost == 50_000 &&
@@ -3193,6 +3932,30 @@ enum SelfTest {
                 tree.canOpenAllChestTypesAtOnce,
             "Rune of Opening unlocks all-type batch chest opening after the modeled prerequisite"
         )
+        expect(
+            tree.unlock(.autoOpenNormalChests, heroLevel: 3, availableGold: 0) &&
+                tree.canAutoOpenNormalChests,
+            "Rune of the Mainspring unlocks source-backed automatic Normal Monster chest opening"
+        )
+        expect(
+            tree.unlock(.autoOpenStageBossChests, heroLevel: 3, availableGold: 0) &&
+                tree.canAutoOpenStageBossChests,
+            "Rune of the Mainspring unlocks source-backed automatic Stage Boss chest opening"
+        )
+        expect(
+            tree.unlock(.autoOpenActBossChests, heroLevel: 3, availableGold: 0) &&
+                tree.canAutoOpenActBossChests,
+            "Rune of the Mainspring unlocks source-backed automatic Act Boss chest opening"
+        )
+        expect(
+            tree.unlock(.maxNormalChestStorage, heroLevel: 3, availableGold: 0) &&
+                tree.unlock(.maxStageBossChestStorage, heroLevel: 3, availableGold: 0) &&
+                tree.unlock(.maxActBossChestStorage, heroLevel: 3, availableGold: 0) &&
+                tree.chestStorageLimits.normalMonster == ChestStorageLimits.base.normalMonster + RuneTree.chestStorageCapacityBonus &&
+                tree.chestStorageLimits.stageBoss == ChestStorageLimits.base.stageBoss + RuneTree.chestStorageCapacityBonus &&
+                tree.chestStorageLimits.actBoss == ChestStorageLimits.base.actBoss + RuneTree.chestStorageCapacityBonus,
+            "source-backed chest-capacity runes raise local box family caps by the conservative scaffold increment"
+        )
         expect(!RuneTreeNode.inventoryExpansion1.hasVerifiedGoldCost && RuneTreeNode.inventoryExpansion1.costText == "成本待核对", "Rune of Expansion inventory cost remains explicitly unverified")
         var inventoryTree = RuneTree()
         expect(!inventoryTree.canUnlock(.inventoryExpansion1, heroLevel: 3, availableGold: 0), "Rune of Expansion inventory capacity requires the modeled party-slot prerequisite")
@@ -3227,7 +3990,7 @@ enum SelfTest {
             "offline boost runes apply the checked +10% reward multipliers"
         )
 
-        var resetTree = RuneTree(unlockedNodes: [.partySlot2, .partySlot3, .activeSkillSlot2, .inventoryExpansion1, .offlineRewards, .offlineGoldBoost, .offlineXPBoost])
+        var resetTree = RuneTree(unlockedNodes: [.partySlot2, .partySlot3, .activeSkillSlot2, .inventoryExpansion1, .autoOpenNormalChests, .autoOpenStageBossChests, .autoOpenActBossChests, .maxNormalChestStorage, .maxStageBossChestStorage, .maxActBossChestStorage, .offlineRewards, .offlineGoldBoost, .offlineXPBoost])
         expect(resetTree.verifiedResetRefundGold == 200_000, "Rune Tree reset refund only includes checked gold costs")
         let resetRefund = resetTree.resetUnlockedNodes()
         expect(
@@ -3236,6 +3999,10 @@ enum SelfTest {
                 resetTree.unlockedPartySlotCount == 1 &&
                 resetTree.activeSkillSlotCount == 1 &&
                 resetTree.inventoryCapacity == Inventory.baseCapacity &&
+                !resetTree.canAutoOpenNormalChests &&
+                !resetTree.canAutoOpenStageBossChests &&
+                !resetTree.canAutoOpenActBossChests &&
+                resetTree.chestStorageLimits == ChestStorageLimits.base &&
                 !resetTree.offlineRewardsUnlocked,
             "Rune Tree reset clears unlocked nodes and returns checked formation gold"
         )
@@ -3472,6 +4239,36 @@ enum SelfTest {
             "Act Boss clear rewards use mapped Act Boss Box metadata"
         )
 
+        var limitedChests = ChestInventory()
+        limitedChests.add(
+            LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster),
+            limits: .base
+        )
+        limitedChests.add(
+            LootChest(kind: .normal, itemLevel: 2, sourceStageCode: "1-2", sourceDifficulty: .normal, family: .normalMonster),
+            limits: .base
+        )
+        expect(
+            limitedChests.totalCount == 1 &&
+                limitedChests.chests.first?.sourceStageCode == "1-2",
+            "base chest family storage keeps the newest source Normal Monster box within the local cap"
+        )
+
+        var expandedChests = ChestInventory()
+        let expandedChestLimits = RuneTree(unlockedNodes: [.maxNormalChestStorage]).chestStorageLimits
+        expandedChests.add(
+            LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster),
+            limits: expandedChestLimits
+        )
+        expandedChests.add(
+            LootChest(kind: .normal, itemLevel: 2, sourceStageCode: "1-2", sourceDifficulty: .normal, family: .normalMonster),
+            limits: expandedChestLimits
+        )
+        expect(
+            expandedChests.totalCount == 2,
+            "Rune of Containment chest-capacity scaffold preserves an additional Normal Monster box"
+        )
+
         tracker = ProgressTracker()
         for _ in 0..<StageDefinition.all.count { clearCurrentStage(&tracker) }
         expect(tracker.currentDifficulty == .nightmare && tracker.currentStage.displayCode == "1-1", "difficulty advances after all stages")
@@ -3480,7 +4277,34 @@ enum SelfTest {
         for _ in 0..<(StageDefinition.all.count * Difficulty.allCases.count * 2) {
             clearCurrentStage(&tracker)
         }
-        expect(tracker.currentDifficulty == .torment && tracker.currentStage.displayCode == "3-10", "progress caps at torment 3-10")
+        expect(
+            tracker.currentDifficulty == .torment &&
+                tracker.currentStage.displayCode == "3-10" &&
+                tracker.isAwaitingNewGamePlus &&
+                tracker.completedPlaythroughs == 1,
+            "progress caps at torment 3-10 and opens the completion settlement"
+        )
+        let finalKillsBeforeExtraAdvance = tracker.killsInChapter
+        expect(!tracker.advance() && tracker.killsInChapter == finalKillsBeforeExtraAdvance, "completion settlement blocks further automatic progress")
+        let secondPlaythroughStarted = tracker.startNextPlaythrough()
+        expect(
+            secondPlaythroughStarted &&
+                tracker.playthrough == 2 &&
+                !tracker.isAwaitingNewGamePlus &&
+                tracker.currentDifficulty == .normal &&
+                tracker.currentStage.displayCode == "1-1" &&
+                tracker.highestUnlockedStage.displayCode == "1-1",
+            "starting next playthrough resets campaign progression while preserving owned state"
+        )
+        let firstPlaythroughMonster = StageDefinition.stage(act: .forest, number: 1).spawnMonster(difficulty: .normal)
+        let secondPlaythroughMonster = StageDefinition.stage(act: .forest, number: 1).spawnMonster(difficulty: .normal, playthrough: 2)
+        expect(
+            NewGamePlusTuning.enemyStatMultiplier(for: 2) > 1.0 &&
+                NewGamePlusTuning.rewardMultiplier(for: 2) > 1.0 &&
+                secondPlaythroughMonster.hp > firstPlaythroughMonster.hp &&
+                secondPlaythroughMonster.goldReward > firstPlaythroughMonster.goldReward,
+            "new game plus scales enemy stats and stage rewards"
+        )
 
         let legacyJSON = #"{"currentChapterIndex":1,"currentDifficultyIndex":0,"chaptersCleared":[1]}"#
         let decoded = try? JSONDecoder().decode(ProgressTracker.self, from: Data(legacyJSON.utf8))
@@ -3725,6 +4549,16 @@ enum SelfTest {
                 SourceItemCatalog.progression(for: .amulet, itemLevel: 100) == SourceGearLevelProgression(id: "601191", itemLevel: 90, name: "Abyss Amulet"),
             "source item catalog selects the closest checked base gear progression at or below item level"
         )
+        let sourceGearIconNames = SourceItemCatalog.allGearTypes.flatMap { gearType in
+            gearType.progressions.map(\.iconName)
+        }
+        expect(
+            sourceGearIconNames.count == SourceItemCatalog.expectedGearLevelProgressionCount &&
+                sourceGearIconNames.allSatisfy { $0.hasPrefix("source_gear_") } &&
+                SourceItemCatalog.progression(for: .scepter, itemLevel: 12)?.iconName == "source_gear_330003" &&
+                SourceItemCatalog.progression(for: .amulet, itemLevel: 100)?.iconName == "source_gear_601191",
+            "source item catalog maps checked base gear progressions to source gear icons"
+        )
         expect(
             SourceItemCatalog.byType[.amulet]?.gearEntryCount == 272 &&
                 SourceItemCatalog.byType[.amulet]?.rarityCount(for: .common) == 0 &&
@@ -3792,8 +4626,8 @@ enum SelfTest {
         )
         let equipmentTypeIcons = EquipmentType.allCases.map { GameArt.itemIconName(for: $0) }
         let slotIcons = EquipSlot.allCases.map { GameArt.itemIconName(for: $0) }
-        expect(equipmentTypeIcons.allSatisfy { $0.hasPrefix("item_") }, "equipment types use clean item type icons instead of generic slot icons")
-        expect(Set(equipmentTypeIcons).count == EquipmentType.allCases.count && Set(equipmentTypeIcons).count > Set(slotIcons).count, "each equipment type has its own clean icon")
+        expect(equipmentTypeIcons.allSatisfy { $0.hasPrefix("item_") }, "equipment types use pinned source gear icons instead of generic slot icons")
+        expect(Set(equipmentTypeIcons).count == EquipmentType.allCases.count && Set(equipmentTypeIcons).count > Set(slotIcons).count, "each equipment type has its own source-backed icon")
 
         let a = Item(id: "same", name: "甲", rarity: .common, slot: .weapon, stats: ItemStats(bonusATK: 1), description: "x")
         let b = Item(id: "same", name: "乙", rarity: .rare, slot: .armor, stats: ItemStats(bonusDEF: 9), description: "y")
@@ -3824,9 +4658,12 @@ enum SelfTest {
             }
             return item.equipmentType == fixture.expectedType &&
                 item.slot == fixture.expectedSlot &&
-                GameArt.itemIconName(for: item) == GameArt.itemIconName(for: fixture.expectedType)
+                GameArt.itemIconName(for: item) == SourceItemCatalog.progression(
+                    for: fixture.expectedType,
+                    itemLevel: 1
+                )?.iconName
         }
-        expect(legacyNameMigrationPassed, "legacy item names infer concrete equipment types for cleaner item icons")
+        expect(legacyNameMigrationPassed, "legacy item names infer concrete equipment types for source gear icons")
         let explicitTypedItem = Item(id: "explicit", name: "旧弓", rarity: .common, slot: .weapon, stats: ItemStats(), description: "legacy", equipmentType: .sword)
         expect(explicitTypedItem.equipmentType == .sword, "explicit equipment type wins over legacy item name inference")
 
@@ -3850,7 +4687,7 @@ enum SelfTest {
                 generated.description.contains("来源装备 330003"),
             "loot generation preserves concrete equipment type, item level and checked source base gear identity"
         )
-        expect(GameArt.itemIconName(for: generated) == GameArt.itemIconName(for: EquipmentType.scepter), "loot item icon follows concrete equipment type")
+        expect(GameArt.itemIconName(for: generated) == "source_gear_330003", "loot item icon follows checked source base gear progression icon")
     }
 
     private static func inventoryCapacity() {
@@ -4031,6 +4868,24 @@ enum SelfTest {
         expect(engine.hero.equipment.armor?.id == "a2", "auto equip picks strongest item per slot")
         expect(engine.hero.equipment.ring?.id == "r2", "auto equip includes expanded accessory slots")
         expect(engine.inventory.items.contains(weakArmor), "weaker item stays in inventory")
+        engine.setWorseEquipmentHandling(.alchemize)
+        let weakerRingLoot = Item(id: "r3", name: "旧戒指", rarity: .uncommon, slot: .ring, stats: ItemStats(bonusHP: 1), description: "", equipmentType: .ring)
+        let goldBeforeWeakLoot = engine.hero.gold
+        expect(engine.retainLootForTesting(weakerRingLoot), "worse-equipment handling accepts handled loot")
+        expect(
+            !engine.inventory.items.contains(weakerRingLoot) &&
+                engine.hero.gold == goldBeforeWeakLoot + Rarity.uncommon.alchemyGoldValue,
+            "worse-equipment alchemy consumes weaker same-slot loot before it enters the backpack"
+        )
+        engine.setWorseEquipmentHandling(.discard)
+        let goldBeforeDiscardedLoot = engine.hero.gold
+        expect(engine.retainLootForTesting(weakerRingLoot), "worse-equipment discard handles weaker same-slot loot")
+        expect(
+            !engine.inventory.items.contains(weakerRingLoot) &&
+                engine.hero.gold == goldBeforeDiscardedLoot,
+            "worse-equipment discard removes weaker same-slot loot without granting gold"
+        )
+        engine.setWorseEquipmentHandling(.keep)
 
         engine.setSoundEffectsEnabled(false)
         expect(!engine.soundEffectsEnabled, "sound effects toggle can be disabled")
@@ -4114,6 +4969,73 @@ enum SelfTest {
             "all-type chest opening consumes the remaining chest snapshot and keeps all rewards"
         )
 
+        let autoChestEngine = GameEngine(
+            saveManager: SaveManager(
+                directory: tempDir.appendingPathComponent("auto-normal-chests", isDirectory: true)
+            ),
+            audio: SilentAudio()
+        )
+        autoChestEngine.hero.gainXP(1_000)
+        autoChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster))
+        autoChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 10, sourceStageCode: "1-9", sourceDifficulty: .normal, family: .stageBoss))
+        expect(autoChestEngine.unlockRuneTreeNode(.autoOpenNormalChests), "Rune of the Mainspring unlocks automatic Normal Monster chest opening in the engine")
+        expect(
+            autoChestEngine.runeTree.canAutoOpenNormalChests &&
+                autoChestEngine.progress.chests.totalCount == 1 &&
+                autoChestEngine.progress.chests.chests.first?.family == .stageBoss &&
+                autoChestEngine.progress.soulStones.count(for: .normal) == 1 &&
+                autoChestEngine.inventory.items.count == 1 &&
+                autoChestEngine.statistics.itemsFound == 1,
+            "automatic Normal Monster chest opening consumes only source Normal Monster boxes"
+        )
+
+        let autoStageBossChestEngine = GameEngine(
+            saveManager: SaveManager(
+                directory: tempDir.appendingPathComponent("auto-stage-boss-chests", isDirectory: true)
+            ),
+            audio: SilentAudio()
+        )
+        autoStageBossChestEngine.hero.gainXP(1_000)
+        autoStageBossChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster))
+        autoStageBossChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 10, sourceStageCode: "1-9", sourceDifficulty: .normal, family: .stageBoss))
+        autoStageBossChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 30, sourceStageCode: "3-10", sourceDifficulty: .normal, family: .actBoss))
+        expect(autoStageBossChestEngine.unlockRuneTreeNode(.autoOpenStageBossChests), "Rune of the Mainspring unlocks automatic Stage Boss chest opening in the engine")
+        expect(
+                autoStageBossChestEngine.runeTree.canAutoOpenStageBossChests &&
+                autoStageBossChestEngine.progress.chests.totalCount == 2 &&
+                autoStageBossChestEngine.progress.chests.chests.filter { $0.family == .normalMonster }.count == 1 &&
+                autoStageBossChestEngine.progress.chests.chests.filter { $0.family == .stageBoss }.isEmpty &&
+                autoStageBossChestEngine.progress.chests.chests.filter { $0.family == .actBoss }.count == 1 &&
+                autoStageBossChestEngine.progress.soulStones.count(for: .normal) == 1 &&
+                autoStageBossChestEngine.inventory.items.count == 1 &&
+                autoStageBossChestEngine.statistics.itemsFound == 1,
+            "automatic Stage Boss chest opening consumes only source Stage Boss boxes"
+        )
+
+        let autoActBossChestEngine = GameEngine(
+            saveManager: SaveManager(
+                directory: tempDir.appendingPathComponent("auto-act-boss-chests", isDirectory: true)
+            ),
+            audio: SilentAudio()
+        )
+        autoActBossChestEngine.hero.gainXP(1_000)
+        autoActBossChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal, family: .normalMonster))
+        autoActBossChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 10, sourceStageCode: "1-9", sourceDifficulty: .normal, family: .stageBoss))
+        autoActBossChestEngine.progress.chests.add(LootChest(kind: .normal, itemLevel: 30, sourceStageCode: "3-10", sourceDifficulty: .normal, family: .actBoss))
+        expect(autoActBossChestEngine.unlockRuneTreeNode(.autoOpenActBossChests), "Rune of the Mainspring unlocks automatic Act Boss chest opening in the engine")
+        expect(
+            autoActBossChestEngine.runeTree.canAutoOpenActBossChests &&
+                autoActBossChestEngine.progress.chests.totalCount == 2 &&
+                autoActBossChestEngine.progress.chests.chests.filter { $0.family == .normalMonster }.count == 1 &&
+                autoActBossChestEngine.progress.chests.chests.filter { $0.family == .stageBoss }.count == 1 &&
+                autoActBossChestEngine.progress.chests.chests.filter { $0.family == .actBoss }.isEmpty &&
+                autoActBossChestEngine.progress.soulStones.count(for: .normal) == 1 &&
+                autoActBossChestEngine.inventory.items.count == 1 &&
+                autoActBossChestEngine.statistics.itemsFound == 1,
+            "automatic Act Boss chest opening consumes only source Act Boss boxes"
+        )
+
+        engine.hero.gold = 0
         engine.setPartyMember(slotIndex: 1, heroClass: .sorcerer)
         expect(engine.party.member(at: 1)?.heroClass == .priest, "locked support party slot ignores class change")
         engine.hero.gainGold(200_000)
@@ -4162,6 +5084,24 @@ enum SelfTest {
                 engine.party.activeCount == 1,
             "Rune Tree reset clears nodes, re-locks party, skill and inventory expansion state, and refunds checked formation gold"
         )
+        expect(engine.nextInventoryExpansionGoldCost == 50_000, "first direct backpack expansion costs 50,000 gold")
+        expect(engine.purchaseInventoryExpansion(), "direct backpack expansion can be purchased repeatedly from the inventory path")
+        expect(
+            engine.purchasedInventoryExpansionCount == 1 &&
+                engine.hero.gold == 150_000 &&
+                engine.inventory.maxCapacity == Inventory.baseCapacity + InventoryExpansion.slotBonus &&
+                engine.nextInventoryExpansionGoldCost == 100_000,
+            "first direct backpack expansion spends gold and adds capacity"
+        )
+        expect(engine.purchaseInventoryExpansion(), "second direct backpack expansion can be purchased")
+        expect(
+            engine.purchasedInventoryExpansionCount == 2 &&
+                engine.hero.gold == 50_000 &&
+                engine.inventory.maxCapacity == Inventory.baseCapacity + InventoryExpansion.slotBonus * 2 &&
+                engine.nextInventoryExpansionGoldCost == 150_000 &&
+                !engine.purchaseInventoryExpansion(),
+            "direct backpack expansion has no one-time cap but still enforces escalating gold cost"
+        )
 
         engine.progress.currentStageIndex = 7
         engine.progress.killsInChapter = 72
@@ -4182,8 +5122,11 @@ enum SelfTest {
         expect(
             engine.runeTree.unlockedPartySlotCount == 1 &&
                 engine.runeTree.activeSkillSlotCount == 1 &&
+                engine.purchasedInventoryExpansionCount == 0 &&
+                engine.inventory.maxCapacity == Inventory.baseCapacity &&
+                engine.worseEquipmentHandling == .keep &&
                 engine.party.activeCount == 1,
-            "resetGame restores Rune Tree party and active skill locks"
+            "resetGame restores Rune Tree party, active skill and direct inventory expansion locks"
         )
         expect(engine.soundEffectsEnabled, "resetGame restores default sound effects setting")
         expect(
@@ -4290,6 +5233,7 @@ enum SelfTest {
             .battleLost: 0.36...0.55,
             .levelUp: 0.36...0.55,
             .itemEquipped: 0.28...0.44,
+            .itemConsumed: 0.28...0.44,
             .preview: 0.28...0.44
         ]
         expect(
@@ -4313,6 +5257,7 @@ enum SelfTest {
             .battleLost: 0.40...0.80,
             .levelUp: 0.40...0.80,
             .itemEquipped: 0.18...0.35,
+            .itemConsumed: 0.18...0.35,
             .preview: 0.18...0.35
         ]
         expect(
@@ -4345,6 +5290,7 @@ enum SelfTest {
         let inventoryAndPreviewVolumes = [
             GameAudioEvent.lootFound.volume,
             GameAudioEvent.itemEquipped.volume,
+            GameAudioEvent.itemConsumed.volume,
             GameAudioEvent.preview.volume
         ]
         let terminalVolumes = [
@@ -4378,6 +5324,38 @@ enum SelfTest {
         engine.inventory.add(sword)
         engine.equipItem(sword)
         expect(audio.events == [.itemEquipped], "manual equipment changes emit the item-equipped sound event")
+        audio.clearEvents()
+
+        let cubeItem = Item(
+            id: "audio-cube-item",
+            name: "音效 Cube 材料",
+            rarity: .rare,
+            slot: nil,
+            stats: ItemStats(),
+            description: ""
+        )
+        engine.inventory.add(cubeItem)
+        let cubeXP = engine.infuseItemIntoCube(cubeItem)
+        expect(
+            cubeXP == Rarity.rare.cubeExperience && audio.events == [.itemConsumed],
+            "Cube infusion emits the item-consumed sound event"
+        )
+        audio.clearEvents()
+
+        let alchemyItem = Item(
+            id: "audio-alchemy-item",
+            name: "音效炼金材料",
+            rarity: .rare,
+            slot: nil,
+            stats: ItemStats(),
+            description: ""
+        )
+        engine.inventory.add(alchemyItem)
+        let alchemyGold = engine.alchemizeItem(alchemyItem)
+        expect(
+            alchemyGold == Rarity.rare.alchemyGoldValue && audio.events == [.itemConsumed],
+            "Alchemy emits the item-consumed sound event"
+        )
         audio.clearEvents()
 
         engine.progress.chests.add(LootChest(
@@ -4457,6 +5435,7 @@ enum SelfTest {
         let manager = SaveManager(directory: tempDir)
         let hero = Hero()
         hero.gainGold(123)
+        hero.unlockedPassiveSkillIDs = ["101001", "101002"]
         var runeTree = RuneTree(unlockedPartySlotCount: 2)
         runeTree.unlockedNodes.insert(.activeSkillSlot2)
         runeTree.unlockedNodes.insert(.inventoryExpansion1)
@@ -4465,38 +5444,54 @@ enum SelfTest {
         var progress = ProgressTracker()
         progress.soulStones.grant(.normal)
         progress.chests.add(LootChest(kind: .normal, itemLevel: 1, sourceStageCode: "1-1", sourceDifficulty: .normal))
+        progress.playthrough = 2
+        progress.completedPlaythroughs = 1
+        progress.isAwaitingNewGamePlus = true
         let inventory = Inventory()
         inventory.add(Item(id: "locked", name: "锁定剑", rarity: .arcana, slot: .weapon, stats: ItemStats(bonusATK: 1), description: "", isLocked: true))
         var cubeProgress = CubeProgress()
         _ = cubeProgress.infuse(Item(id: "cube", name: "Cube 材料", rarity: .rare, slot: nil, stats: ItemStats(), description: ""))
         var activeSkillLoadouts = ActiveSkillLoadouts()
         activeSkillLoadouts.setSkill("40301", for: .priest, slotIndex: 0)
-        manager.save(SaveData(hero: hero, party: party, runeTree: runeTree, cubeProgress: cubeProgress, activeSkillLoadouts: activeSkillLoadouts, inventory: inventory, progress: progress, statistics: GameStatistics(), autoEquipBestItems: true, soundEffectsEnabled: false, unyieldingWillConsumedStageKey: "4:3-9", timestamp: Date()))
+        manager.save(SaveData(hero: hero, party: party, runeTree: runeTree, cubeProgress: cubeProgress, purchasedInventoryExpansionCount: 2, activeSkillLoadouts: activeSkillLoadouts, inventory: inventory, progress: progress, statistics: GameStatistics(), autoEquipBestItems: true, worseEquipmentHandling: .alchemize, soundEffectsEnabled: false, unyieldingWillConsumedStageKey: "4:3-9", timestamp: Date()))
         let loaded = manager.load()
         expect(loaded?.hero.gold == 123, "save/load round trip preserves data")
+        expect(loaded?.hero.unlockedPassiveSkillIDs == ["101001", "101002"], "save/load round trip preserves unlocked passive skill IDs")
         expect(loaded?.party.member(at: 0)?.heroClass == .priest && loaded?.party.member(at: 1)?.heroClass == .sorcerer, "save/load round trip preserves party")
         expect(loaded?.runeTree.unlockedPartySlotCount == 2 && loaded?.party.activeCount == 2, "save/load round trip preserves Rune Tree party unlocks")
         expect(loaded?.runeTree.activeSkillSlotCount == 2, "save/load round trip preserves Rune Tree active skill slot unlocks")
         expect(
             loaded?.runeTree.inventoryCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus &&
-                loaded?.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus,
-            "save/load round trip derives inventory capacity from Rune Tree unlocks"
+                loaded?.purchasedInventoryExpansionCount == 2 &&
+                loaded?.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus + InventoryExpansion.slotBonus * 2,
+            "save/load round trip derives inventory capacity from Rune Tree and purchased backpack expansions"
         )
         expect(loaded?.cubeProgress.totalExperience == Rarity.rare.cubeExperience, "save/load round trip preserves Cube progress")
         expect(loaded?.activeSkillLoadouts.activeSkills(for: .priest, heroLevel: 1, slotCount: 1).map(\.id) == ["40301"], "save/load round trip preserves active skill loadout")
         expect(loaded?.inventory.items.first?.isLocked == true, "save/load round trip preserves item lock state")
         expect(loaded?.autoEquipBestItems == true, "save/load round trip preserves auto equip toggle")
+        expect(loaded?.worseEquipmentHandling == .alchemize, "save/load round trip preserves worse equipment handling")
         expect(loaded?.soundEffectsEnabled == false, "save/load round trip preserves sound effects toggle")
         expect(loaded?.unyieldingWillConsumedStageKey == "4:3-9", "save/load round trip preserves Unyielding Will stage consumption")
         expect(loaded?.progress.soulStones.count(for: .normal) == 1, "save/load round trip preserves Soul Stones")
         expect(loaded?.progress.chests.count(for: .normal) == 1, "save/load round trip preserves chests")
+        expect(
+            loaded?.progress.playthrough == 2 &&
+                loaded?.progress.completedPlaythroughs == 1 &&
+                loaded?.progress.isAwaitingNewGamePlus == true,
+            "save/load round trip preserves playthrough settlement state"
+        )
 
         let engine = GameEngine(saveManager: manager, audio: SilentAudio())
         engine.start()
         engine.stop()
         expect(
-            engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus,
-            "GameEngine load derives inventory capacity from Rune Tree unlocks"
+            engine.purchasedInventoryExpansionCount == 2 &&
+                engine.worseEquipmentHandling == .alchemize &&
+                engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus + InventoryExpansion.slotBonus * 2 &&
+                engine.progress.isAwaitingNewGamePlus &&
+                engine.currentBattle == nil,
+            "GameEngine load derives inventory capacity, preserves settings and keeps completion settlement paused"
         )
     }
 }

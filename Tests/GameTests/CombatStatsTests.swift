@@ -156,6 +156,41 @@ import Testing
             #expect(HeroSkills.baseAttackDelivery(for: heroClass) == delivery)
         }
     }
+
+    @Test func stageElementalPriestsUseSourceAttackMetadata() {
+        let expected: [(String, String, SkillDamageElement)] = [
+            ("燃烧的地狱祭司", "301015", .fire),
+            ("冰冻的地狱祭司", "301025", .cold),
+            ("电流的地狱祭司", "301035", .lightning),
+            ("混沌的地狱祭司", "301045", .chaos)
+        ]
+
+        for (name, sourceSkillID, damageElement) in expected {
+            var matchedMonster: Monster?
+            stageSearch: for stage in StageDefinition.all {
+                for difficulty in Difficulty.allCases {
+                    let clearTarget = stage.clearTarget(for: difficulty)
+                    for encounterIndex in 0..<clearTarget {
+                        let monster = stage.spawnMonster(difficulty: difficulty, encounterIndex: encounterIndex)
+                        if monster.name == name {
+                            matchedMonster = monster
+                            break stageSearch
+                        }
+                    }
+                }
+            }
+
+            #expect(matchedMonster?.sourceSkillID == sourceSkillID)
+            #expect(matchedMonster?.sourceSkill?.activation == .baseAttack)
+            #expect(matchedMonster?.sourceDamageElement == damageElement)
+        }
+
+        let regularMonster = StageDefinition.stage(act: .forest, number: 1)
+            .spawnMonster(difficulty: .normal)
+        #expect(regularMonster.name == "哥布林盗贼")
+        #expect(regularMonster.sourceSkillID == nil)
+        #expect(regularMonster.sourceDamageElement == .none)
+    }
 }
 
 @Suite struct PassiveSkillCatalogTests {
@@ -221,6 +256,346 @@ import Testing
         #expect(PassiveSkills.skill(id: "601072")?.heroClass == .slayer)
         #expect(PassiveSkills.skill(id: "999999") == nil)
         #expect(PassiveSkills.heroClass(for: "999999") == nil)
+    }
+
+    @Test func unlockedPassiveSkillsFeedCoreRuntimeStats() {
+        let knight = Hero()
+        knight.unlockedPassiveSkillIDs = [
+            "101001",
+            "101002",
+            "101011",
+            "101061",
+            "101071",
+            "201011"
+        ]
+
+        #expect(knight.maxHP == 145)
+        #expect(knight.attack == 19)
+        #expect(knight.defense == 55)
+        #expect(knight.speed == 13)
+        #expect(abs(knight.passiveRuntimeEffects.passiveDamageReduction - 0.20) < 0.0001)
+        #expect(abs(knight.critRate - knight.baseStats.critRate) < 0.0001)
+
+        let blockEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101022", "101052"],
+            heroClass: .knight
+        )
+        #expect(abs(blockEffects.passiveBlockChance - 0.006) < 0.0001)
+
+        let elementalResistanceEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101062"],
+            heroClass: .knight
+        )
+        #expect(abs(elementalResistanceEffects.passiveAllElementalResistance - 0.30) < 0.0001)
+
+        let skillRangeEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101081"],
+            heroClass: .knight
+        )
+        #expect(abs(skillRangeEffects.passiveSkillRangeExpansion - 0.30) < 0.0001)
+
+        let areaEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101082"],
+            heroClass: .knight
+        )
+        #expect(abs(areaEffects.passiveAreaOfEffect - 0.50) < 0.0001)
+
+        let ranger = Hero()
+        ranger.changeClass(to: .ranger)
+        ranger.unlockedPassiveSkillIDs = ["201011", "201012"]
+
+        #expect(abs(ranger.critRate - 0.06) < 0.0001)
+        #expect(abs(ranger.critDamage - 2.8) < 0.0001)
+    }
+
+    @Test func unlockedSustainPassivesAggregateForBattleHooks() {
+        let sustainEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["101012", "101021", "101051"],
+            heroClass: .knight
+        )
+
+        #expect(sustainEffects.passiveHpRegenPerSec == 100)
+        #expect(sustainEffects.passiveAddHpPerKill == 8)
+        #expect(sustainEffects.passiveAddHpPerHit == 0)
+    }
+
+    @Test func unlockedDamageHealingCooldownAndDurationPassivesAggregateForBattleHooks() {
+        let dodgeEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["201021", "201031", "201041", "201081"],
+            heroClass: .ranger
+        )
+        #expect(abs(dodgeEffects.passiveDodgeChance - 0.006) < 0.0001)
+        #expect(abs(dodgeEffects.passiveElementalDodgeChance - 0.003) < 0.0001)
+        #expect(abs(dodgeEffects.passiveMaxDodgeChance - 0.001) < 0.0001)
+
+        let sorcererEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["301002", "301021", "301022", "301031", "301041"],
+            heroClass: .sorcerer
+        )
+
+        #expect(abs(sorcererEffects.passiveCooldownReduction - 0.30) < 0.0001)
+        #expect(abs(sorcererEffects.passiveFireDamagePercent - 1.0) < 0.0001)
+        #expect(abs(sorcererEffects.passiveColdDamagePercent - 1.0) < 0.0001)
+        #expect(abs(sorcererEffects.passiveLightningDamagePercent - 1.0) < 0.0001)
+
+        let castSpeedEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["301051", "301082"],
+            heroClass: .sorcerer
+        )
+        #expect(abs(castSpeedEffects.passiveCastSpeed - 1.40) < 0.0001)
+
+        let rangerEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["201022", "201052", "201061"],
+            heroClass: .ranger
+        )
+        #expect(abs(rangerEffects.passiveIncreaseProjectileDamage - 1.5) < 0.0001)
+        #expect(abs(rangerEffects.passiveHpLeech - 0.05) < 0.0001)
+        #expect(abs(rangerEffects.passiveIncreaseAreaOfEffectDamage - 1.5) < 0.0001)
+
+        let priestEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["401012", "401022", "401032", "401061"],
+            heroClass: .priest
+        )
+        #expect(priestEffects.passiveDamageAbsorption == 10)
+        #expect(abs(priestEffects.passiveSkillHealIncrease - 0.7) < 0.0001)
+        #expect(abs(priestEffects.passiveCooldownReduction - 0.2) < 0.0001)
+
+        let priestCastEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["401041", "401072"],
+            heroClass: .priest
+        )
+        #expect(abs(priestCastEffects.passiveCastSpeed - 1.40) < 0.0001)
+
+        let slayerEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["601051", "601072"],
+            heroClass: .slayer
+        )
+        #expect(abs(slayerEffects.passiveIncreaseAreaOfEffectDamage - 1.5) < 0.0001)
+        #expect(abs(slayerEffects.passiveSkillDurationIncrease - 0.8) < 0.0001)
+
+        let movementEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["201042", "201082"],
+            heroClass: .ranger
+        )
+        #expect(movementEffects.passiveMovementSpeed == 40)
+
+        let movementHero = Hero()
+        movementHero.changeClass(to: .ranger)
+        movementHero.unlockedPassiveSkillIDs = ["201042", "201082"]
+        #expect(movementHero.speed == 50)
+
+        let slayerMovementEffects = PassiveSkillRuntimeEffects.make(
+            unlockedSkillIDs: ["601062"],
+            heroClass: .slayer
+        )
+        #expect(slayerMovementEffects.passiveMovementSpeed == 0)
+        #expect(abs(slayerMovementEffects.passiveMovementSpeedMultiplier - 1.20) < 0.0001)
+
+        let slayerMovementHero = Hero()
+        slayerMovementHero.changeClass(to: .slayer)
+        slayerMovementHero.unlockedPassiveSkillIDs = ["601062"]
+        #expect(slayerMovementHero.speed == 9)
+    }
+
+    @Test func unlockedHpLeechPassiveHealsFromMainHeroDamage() {
+        let hero = Hero()
+        hero.changeClass(to: .ranger)
+        hero.unlockedPassiveSkillIDs = ["201052"]
+        _ = hero.equipment.equip(Item(
+            id: "leech-bow",
+            name: "吸血测试弓",
+            rarity: .common,
+            slot: .weapon,
+            stats: ItemStats(bonusATK: 1_000),
+            description: "",
+            equipmentType: .bow
+        ))
+        hero.takeDamage(80)
+        let woundedHP = hero.currentHP
+
+        let battle = Battle(
+            hero: hero,
+            monster: Monster(
+                id: "leech-dummy",
+                name: "吸血测试目标",
+                hp: 10_000,
+                atk: 0,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            ),
+            party: HeroParty(primaryClass: .ranger),
+            activeSkillSlotCount: 1
+        )
+
+        battle.update(deltaTime: 1)
+
+        #expect(hero.currentHP > woundedHP)
+        #expect(battle.heroHP == hero.currentHP)
+    }
+
+    @Test func unlockedDamageAbsorptionPassiveReducesIncomingDamageAfterPercentMitigation() {
+        let damage = Battle.modifiedIncomingDamage(
+            200,
+            continuousIncomingDamageMultiplier: 1.0,
+            passiveDamageReduction: 0.25,
+            passiveDamageAbsorption: 10
+        )
+
+        #expect(damage == 140)
+    }
+
+    @Test func unlockedAllElementalResistancePassiveReducesOnlyElementalIncomingDamage() {
+        #expect(Battle.modifiedIncomingDamage(
+            200,
+            continuousIncomingDamageMultiplier: 1.0,
+            passiveDamageReduction: 0.25,
+            passiveDamageAbsorption: 10,
+            passiveAllElementalResistance: 0.20,
+            damageElement: .fire
+        ) == 110)
+        #expect(Battle.modifiedIncomingDamage(
+            200,
+            continuousIncomingDamageMultiplier: 1.0,
+            passiveDamageReduction: 0.25,
+            passiveDamageAbsorption: 10,
+            passiveAllElementalResistance: 0.20,
+            damageElement: .cold
+        ) == 110)
+        #expect(Battle.modifiedIncomingDamage(
+            200,
+            continuousIncomingDamageMultiplier: 1.0,
+            passiveDamageReduction: 0.25,
+            passiveDamageAbsorption: 10,
+            passiveAllElementalResistance: 0.20,
+            damageElement: .lightning
+        ) == 110)
+        #expect(Battle.modifiedIncomingDamage(
+            200,
+            continuousIncomingDamageMultiplier: 1.0,
+            passiveDamageReduction: 0.25,
+            passiveDamageAbsorption: 10,
+            passiveAllElementalResistance: 0.20,
+            damageElement: .physical
+        ) == 140)
+        #expect(Battle.modifiedIncomingDamage(
+            200,
+            continuousIncomingDamageMultiplier: 1.0,
+            passiveDamageReduction: 0.25,
+            passiveDamageAbsorption: 10,
+            passiveAllElementalResistance: 0.20,
+            damageElement: .chaos
+        ) == 140)
+    }
+
+    @Test func monsterSourceElementFeedsIncomingResistanceAndLogMetadata() {
+        func monsterHit(sourceSkillID: String) -> BattleLogEntry? {
+            let hero = Hero()
+            hero.unlockedPassiveSkillIDs = ["101062"]
+            let monster = Monster(
+                id: "source-\(sourceSkillID)",
+                name: "源技能怪物",
+                hp: 100_000,
+                atk: 400,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 1,
+                goldReward: 1,
+                lootTableID: "none",
+                sourceSkillID: sourceSkillID
+            )
+            let battle = Battle(
+                hero: hero,
+                monster: monster,
+                party: HeroParty(primaryClass: .knight),
+                activeSkillSlotCount: 1
+            )
+
+            battle.update(deltaTime: 0.01)
+            return battle.log.last { $0.attacker == .monster }
+        }
+
+        let fireHit = monsterHit(sourceSkillID: "301015")
+        let chaosHit = monsterHit(sourceSkillID: "301045")
+
+        #expect(fireHit?.damageElement == .fire)
+        #expect(chaosHit?.damageElement == .chaos)
+        #expect((fireHit?.damage ?? 0) > 0)
+        #expect((chaosHit?.damage ?? 0) > 0)
+        #expect((fireHit?.damage ?? Int.max) < (chaosHit?.damage ?? 0))
+    }
+
+    @Test func unlockedDodgeChancePassiveCanAvoidIncomingAttacksBeforeDamageCalculation() {
+        #expect(Battle.incomingAttackWasDodged(roll: 0.005, passiveDodgeChance: 0.006))
+        #expect(!Battle.incomingAttackWasDodged(roll: 0.006, passiveDodgeChance: 0.006))
+        #expect(Battle.incomingAttackWasDodged(roll: 0.79, passiveDodgeChance: 2.0))
+        #expect(!Battle.incomingAttackWasDodged(roll: 0.81, passiveDodgeChance: 2.0))
+        #expect(Battle.incomingAttackWasDodged(roll: 0.8005, passiveDodgeChance: 2.0, passiveMaxDodgeChance: 0.001))
+        #expect(!Battle.incomingAttackWasDodged(roll: 0.8015, passiveDodgeChance: 2.0, passiveMaxDodgeChance: 0.001))
+        #expect(Battle.incomingAttackWasDodged(
+            roll: 0.008,
+            passiveDodgeChance: 0.006,
+            passiveElementalDodgeChance: 0.003,
+            damageElement: .fire
+        ))
+        #expect(Battle.incomingAttackWasDodged(
+            roll: 0.008,
+            passiveDodgeChance: 0.006,
+            passiveElementalDodgeChance: 0.003,
+            damageElement: .cold
+        ))
+        #expect(Battle.incomingAttackWasDodged(
+            roll: 0.008,
+            passiveDodgeChance: 0.006,
+            passiveElementalDodgeChance: 0.003,
+            damageElement: .lightning
+        ))
+        #expect(!Battle.incomingAttackWasDodged(
+            roll: 0.008,
+            passiveDodgeChance: 0.006,
+            passiveElementalDodgeChance: 0.003,
+            damageElement: .physical
+        ))
+        #expect(!Battle.incomingAttackWasDodged(
+            roll: 0.008,
+            passiveDodgeChance: 0.006,
+            passiveElementalDodgeChance: 0.003,
+            damageElement: .chaos
+        ))
+    }
+
+    @Test func unlockedCastSpeedPassiveShortensCooldownSkillInterval() {
+        #expect(abs(Battle.modifiedSkillCooldown(
+            baseCooldown: 10,
+            passiveCooldownReduction: 0.20,
+            passiveCastSpeed: 0
+        ) - 8.0) < 0.0001)
+        #expect(abs(Battle.modifiedSkillCooldown(
+            baseCooldown: 10,
+            passiveCooldownReduction: 0.20,
+            passiveCastSpeed: 1.0
+        ) - 4.0) < 0.0001)
+        #expect(abs(Battle.modifiedSkillCooldown(
+            baseCooldown: 10,
+            passiveCooldownReduction: -0.20,
+            passiveCastSpeed: -1.0
+        ) - 10.0) < 0.0001)
+        #expect(Battle.modifiedSkillCooldown(
+            baseCooldown: 2,
+            passiveCooldownReduction: 0.80,
+            passiveCastSpeed: 2.0
+        ) == 1)
+    }
+
+    @Test func unlockedBlockChancePassiveCanBlockIncomingAttacksBeforeDamageCalculation() {
+        #expect(Battle.incomingAttackWasBlocked(roll: 0.005, passiveBlockChance: 0.006))
+        #expect(!Battle.incomingAttackWasBlocked(roll: 0.006, passiveBlockChance: 0.006))
+        #expect(Battle.incomingAttackWasBlocked(roll: 0.79, passiveBlockChance: 2.0))
+        #expect(!Battle.incomingAttackWasBlocked(roll: 0.81, passiveBlockChance: 2.0))
     }
 }
 
@@ -392,6 +767,41 @@ import Testing
         ) == nil)
         #expect(BattleImpactCue.visible(
             for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "治愈", kind: .heal)
+        ) == nil)
+    }
+}
+
+@Suite struct BattleIncomingCueTests {
+    @Test func monsterDamageResolvesToIncomingCues() {
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false)
+        ) == .physical)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false, damageElement: .fire)
+        ) == .fire)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false, damageElement: .cold)
+        ) == .cold)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false, damageElement: .lightning)
+        ) == .lightning)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false, damageElement: .chaos)
+        ) == .chaos)
+    }
+
+    @Test func HeroZeroDamageAndNonDamageEntriesDoNotRenderIncomingCues() {
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .hero, damage: 100, isCrit: false, skillName: "火球术")
+        ) == nil)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .support(.ranger), damage: 100, isCrit: false)
+        ) == nil)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 0, isCrit: false, damageElement: .fire)
+        ) == nil)
+        #expect(BattleIncomingCue.visible(
+            for: BattleLogEntry(attacker: .monster, damage: 100, isCrit: false, kind: .heal)
         ) == nil)
     }
 }
@@ -789,6 +1199,35 @@ import Testing
             activeSkillLoadouts: loadouts
         )
 
+        let supportRapidFireTriggerEvery = max(
+            1,
+            HeroSkills.named(for: .ranger).first { $0.id == "20101" }?.triggerEvery ?? 3
+        )
+        while battle.log.filter({
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == nil &&
+                $0.kind == .damage
+        }).count < supportRapidFireTriggerEvery - 1 {
+            battle.update(deltaTime: 1)
+        }
+        let rapidFireCountBeforeTrigger = battle.log.filter {
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == "快速射击" &&
+                $0.kind == .damage
+        }.count
+        while battle.log.filter({
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == nil &&
+                $0.kind == .damage
+        }).count < supportRapidFireTriggerEvery {
+            battle.update(deltaTime: 1)
+        }
+        let rapidFireCountAfterTrigger = battle.log.filter {
+            $0.attacker == .support(.ranger) &&
+                $0.skillName == "快速射击" &&
+                $0.kind == .damage
+        }.count
+
         for _ in 0..<20 {
             battle.update(deltaTime: 1)
             if battle.log.filter({ $0.attacker == .support(.ranger) && $0.skillName == "快速射击" }).count >= 2 {
@@ -796,6 +1235,8 @@ import Testing
             }
         }
 
+        #expect(rapidFireCountBeforeTrigger == 0)
+        #expect(rapidFireCountAfterTrigger > rapidFireCountBeforeTrigger)
         #expect(battle.log.filter {
             $0.attacker == .support(.ranger) &&
                 $0.skillName == "快速射击" &&
@@ -1042,6 +1483,65 @@ import Testing
         #expect(healthyHits >= 2)
         #expect(woundedHits > healthyHits)
         #expect(woundedHits >= 5)
+    }
+
+    @Test func skillRangeExpansionExtendsFocusedMeleeSkillTargets() {
+        func makeMonsters() -> [Monster] {
+            (1...3).map { index in
+                Monster(
+                    id: "skill-range-\(index)",
+                    name: "技能范围训练 \(index)",
+                    hp: 1_000_000,
+                    atk: 0,
+                    def: 0,
+                    spd: 1,
+                    critRate: 0,
+                    xpReward: 0,
+                    goldReward: 0,
+                    lootTableID: "none"
+                )
+            }
+        }
+
+        var loadout = ActiveSkillLoadouts()
+        loadout.setSkills(["10301"], for: .knight)
+
+        let baselineBattle = Battle(
+            hero: Hero(),
+            monsters: makeMonsters(),
+            party: HeroParty(primaryClass: .knight),
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: loadout
+        )
+        for _ in 0..<14 {
+            baselineBattle.update(deltaTime: 1)
+            if baselineBattle.log.contains(where: { $0.skillName == "报应打击" && $0.kind == .damage }) {
+                break
+            }
+        }
+
+        let expandedHero = Hero()
+        expandedHero.unlockedPassiveSkillIDs = ["101081"]
+        let expandedBattle = Battle(
+            hero: expandedHero,
+            monsters: makeMonsters(),
+            party: HeroParty(primaryClass: .knight),
+            activeSkillSlotCount: 1,
+            activeSkillLoadouts: loadout
+        )
+        for _ in 0..<14 {
+            expandedBattle.update(deltaTime: 1)
+            if expandedBattle.log.contains(where: { $0.skillName == "报应打击" && $0.kind == .damage }) {
+                break
+            }
+        }
+
+        #expect(baselineBattle.enemyStates.filter { $0.hp < $0.maxHP }.count == 1)
+        #expect(expandedBattle.enemyStates.filter { $0.hp < $0.maxHP }.count >= 2)
+        #expect(
+            expandedBattle.log.filter { $0.skillName == "报应打击" && $0.kind == .damage }.count >
+            baselineBattle.log.filter { $0.skillName == "报应打击" && $0.kind == .damage }.count
+        )
     }
 
     @Test func aegisFieldAppliesDamageShield() {
@@ -1361,6 +1861,48 @@ import Testing
 
         #expect(battle.log.filter { $0.skillName == "火球术" && $0.kind == .damage }.count >= 3)
         #expect(battle.enemyStates.allSatisfy { $0.hp < $0.maxHP })
+    }
+
+    @Test func unlockedElementalPassiveIncreasesMainHeroSkillDamage() {
+        func explosiveBoltDamage(unlockedPassiveSkillIDs: Set<String>) -> Int {
+            let hero = Hero()
+            hero.changeClass(to: .hunter)
+            hero.unlockedPassiveSkillIDs = unlockedPassiveSkillIDs
+
+            let monster = Monster(
+                id: "passive-fire-training-\(unlockedPassiveSkillIDs.count)",
+                name: "被动火伤训练木桩",
+                hp: 1_000_000,
+                atk: 1,
+                def: 0,
+                spd: 1,
+                critRate: 0,
+                xpReward: 0,
+                goldReward: 0,
+                lootTableID: "none"
+            )
+            var loadout = ActiveSkillLoadouts()
+            loadout.setSkill("50101", for: .hunter, slotIndex: 0)
+            let battle = Battle(
+                hero: hero,
+                monster: monster,
+                party: HeroParty(primaryClass: .hunter),
+                activeSkillSlotCount: 1,
+                activeSkillLoadouts: loadout
+            )
+
+            battle.update(deltaTime: 1)
+            return battle.log
+                .filter { $0.skillName == "爆炸弩箭" && $0.kind == .damage }
+                .map(\.damage)
+                .reduce(0, +)
+        }
+
+        let baselineDamage = explosiveBoltDamage(unlockedPassiveSkillIDs: [])
+        let boostedDamage = explosiveBoltDamage(unlockedPassiveSkillIDs: ["501021"])
+
+        #expect(baselineDamage > 0)
+        #expect(boostedDamage > baselineDamage * 5 / 4)
     }
 
     @Test func iceOrbDealsMultiHitRangeDamageAndSlowsLiveWave() {

@@ -2,9 +2,11 @@
 set -euo pipefail
 
 sfx_dir="${SFX_DIR:-Sources/Resources/Extracted/sfx}"
+sfx_manifest="${SFX_MANIFEST:-$sfx_dir/sfx_manifest.tsv}"
 game_audio_swift="${GAME_AUDIO_SWIFT:-Sources/App/GameAudio.swift}"
 game_loop_swift="${GAME_LOOP_SWIFT:-Sources/Game/Engine/GameLoop.swift}"
 battle_swift="${BATTLE_SWIFT:-Sources/Game/Combat/Battle.swift}"
+packaged_sfx_dir="${PACKAGED_SFX_DIR:-dist/TBH.app/Contents/Resources/TBH-macOS_TBH.bundle/Extracted/sfx}"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -15,7 +17,7 @@ require_tool() {
 
 require_tool python3
 
-python3 - "$sfx_dir" "$game_audio_swift" "$game_loop_swift" "$battle_swift" <<'PY'
+python3 - "$sfx_dir" "$game_audio_swift" "$game_loop_swift" "$battle_swift" "$sfx_manifest" <<'PY'
 import math
 import re
 import struct
@@ -28,9 +30,14 @@ sfx_dir = Path(sys.argv[1])
 game_audio_swift = Path(sys.argv[2])
 game_loop_swift = Path(sys.argv[3])
 battle_swift = Path(sys.argv[4])
+sfx_manifest = Path(sys.argv[5])
 
 if not sfx_dir.is_dir():
     print(f"SFX directory does not exist: {sfx_dir}", file=sys.stderr)
+    sys.exit(2)
+
+if not sfx_manifest.is_file():
+    print(f"SFX manifest does not exist: {sfx_manifest}", file=sys.stderr)
     sys.exit(2)
 
 if not game_audio_swift.is_file():
@@ -186,6 +193,8 @@ extra = [name for name in existing if name not in expected]
 issues = []
 rows = []
 content_hashes = {}
+file_hash_by_name = {}
+file_bytes_by_name = {}
 samples_by_name = {}
 sample_rate_by_name = {}
 
@@ -241,6 +250,12 @@ event_profiles = {
         "centroid": (300, 1400),
         "low_ratio_min": 0.70,
     },
+    "sfx_item_consumed": {
+        "duration": (0.12, 0.24),
+        "centroid": (650, 2200),
+        "zcr": (0.040, 0.150),
+        "attack_ms_max": 45,
+    },
     "sfx_preview": {
         "duration": (0.08, 0.16),
         "centroid": (900, 3000),
@@ -255,6 +270,7 @@ volume_profiles = {
     "heroDamaged": (0.32, 0.50),
     "lootFound": (0.28, 0.44),
     "itemEquipped": (0.28, 0.44),
+    "itemConsumed": (0.28, 0.44),
     "preview": (0.28, 0.44),
     "battleWon": (0.36, 0.55),
     "battleLost": (0.36, 0.55),
@@ -276,7 +292,7 @@ for event in audio_events:
 
 inventory_preview_volumes = [
     volume_by_event[event]
-    for event in ["lootFound", "itemEquipped", "preview"]
+    for event in ["lootFound", "itemEquipped", "itemConsumed", "preview"]
     if event in volume_by_event
 ]
 terminal_volumes = [
@@ -296,6 +312,7 @@ interval_profiles = {
     "heroDamaged": (0.12, 0.25),
     "lootFound": (0.18, 0.35),
     "itemEquipped": (0.18, 0.35),
+    "itemConsumed": (0.18, 0.35),
     "preview": (0.18, 0.35),
     "battleWon": (0.40, 0.80),
     "battleLost": (0.40, 0.80),
@@ -339,6 +356,10 @@ for name in expected:
     path = sfx_dir / f"{name}.wav"
     if not path.is_file():
         continue
+
+    file_data = path.read_bytes()
+    file_hash_by_name[name] = hashlib.sha256(file_data).hexdigest()
+    file_bytes_by_name[name] = len(file_data)
 
     with wave.open(str(path), "rb") as wav:
         channels = wav.getnchannels()
@@ -506,6 +527,8 @@ for name in expected:
             "spectral_centroid": spectral_centroid,
             "high_ratio": high_ratio,
             "low_ratio": low_ratio,
+            "sha256": file_hash_by_name[name],
+            "bytes": file_bytes_by_name[name],
         }
     )
 
@@ -517,6 +540,72 @@ for names in duplicate_audio_payloads:
     issues.append(("duplicate_audio_payload", [f"identical WAV payload reused by {', '.join(sorted(names))}"]))
 
 rows_by_name = {row["name"]: row for row in rows}
+manifest_issues = []
+manifest_header = [
+    "resourceName",
+    "event",
+    "provenance",
+    "officialAudio",
+    "sampleRate",
+    "channels",
+    "bitDepth",
+    "durationSeconds",
+    "sha256",
+    "bytes",
+    "note",
+]
+manifest_lines = [line for line in sfx_manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+manifest_rows = []
+if not manifest_lines:
+    manifest_issues.append("SFX manifest is empty")
+else:
+    header = manifest_lines[0].split("\t")
+    if header != manifest_header:
+        manifest_issues.append("SFX manifest header does not match the expected provenance schema")
+    for line_number, line in enumerate(manifest_lines[1:], start=2):
+        columns = line.split("\t")
+        if len(columns) != len(manifest_header):
+            manifest_issues.append(f"line {line_number}: expected {len(manifest_header)} tab-separated columns, got {len(columns)}")
+            continue
+        manifest_rows.append(dict(zip(manifest_header, columns)))
+
+manifest_by_resource = {row["resourceName"]: row for row in manifest_rows}
+manifest_resources = set(manifest_by_resource)
+expected_resources = set(expected)
+for resource in sorted(expected_resources - manifest_resources):
+    manifest_issues.append(f"{resource}: missing from SFX manifest")
+for resource in sorted(manifest_resources - expected_resources):
+    manifest_issues.append(f"{resource}: manifest row is not referenced by GameAudioEvent")
+
+event_by_resource = {resource: event for event, resource in resource_by_event.items()}
+for resource in sorted(expected_resources & manifest_resources):
+    manifest = manifest_by_resource[resource]
+    row = rows_by_name.get(resource)
+    if row is None:
+        continue
+
+    expected_event = event_by_resource.get(resource)
+    if manifest["event"] != expected_event:
+        manifest_issues.append(f"{resource}: manifest event {manifest['event']} does not match GameAudioEvent {expected_event}")
+    if manifest["provenance"] != "generated_substitute":
+        manifest_issues.append(f"{resource}: provenance must stay generated_substitute until official isolated SFX are available")
+    if manifest["officialAudio"] != "false":
+        manifest_issues.append(f"{resource}: officialAudio must be false for local substitute SFX")
+    if "not extracted from original TBH" not in manifest["note"]:
+        manifest_issues.append(f"{resource}: note must explicitly say the cue is not extracted from original TBH")
+
+    numeric_checks = [
+        ("sampleRate", str(row["sample_rate"])),
+        ("channels", str(row["channels"])),
+        ("bitDepth", str(row["sample_width"] * 8)),
+        ("durationSeconds", f"{row['duration']:.3f}"),
+        ("sha256", row["sha256"]),
+        ("bytes", str(row["bytes"])),
+    ]
+    for key, expected_value in numeric_checks:
+        if manifest[key] != expected_value:
+            manifest_issues.append(f"{resource}: manifest {key}={manifest[key]} does not match payload {expected_value}")
+
 relationship_issues = []
 
 def require_relationship(condition, message):
@@ -567,6 +656,18 @@ if "sfx_level_up" in rows_by_name and "sfx_preview" in rows_by_name:
         "level-up SFX should read as a longer progression cue than preview SFX",
     )
 
+if "sfx_item_consumed" in rows_by_name and "sfx_item_equipped" in rows_by_name:
+    consumed = rows_by_name["sfx_item_consumed"]
+    equipped = rows_by_name["sfx_item_equipped"]
+    require_relationship(
+        consumed["duration"] >= equipped["duration"],
+        "item-consumed SFX should be at least as long as item-equipped SFX",
+    )
+    require_relationship(
+        consumed["spectral_centroid"] > equipped["spectral_centroid"],
+        "item-consumed SFX should sound more magical/transformative than item-equipped SFX",
+    )
+
 sequence_issues = []
 sequence_rows = []
 sequence_definitions = {
@@ -580,8 +681,9 @@ sequence_definitions = {
         ("sfx_battle_won", 0.00),
         ("sfx_loot_found", 0.34),
         ("sfx_item_equipped", 0.62),
-        ("sfx_level_up", 0.88),
-        ("sfx_preview", 1.32),
+        ("sfx_item_consumed", 0.82),
+        ("sfx_level_up", 1.08),
+        ("sfx_preview", 1.52),
     ],
     "defeat_chain": [
         ("sfx_hero_damaged", 0.00),
@@ -646,6 +748,7 @@ print(f"source={game_audio_swift}")
 print(f"game_loop={game_loop_swift}")
 print(f"battle_source={battle_swift}")
 print(f"sfx_dir={sfx_dir}")
+print(f"sfx_manifest={sfx_manifest}")
 print(f"expected_events={len(audio_events)}")
 print(f"battle_event_routes={len(battle_events)}")
 print()
@@ -682,6 +785,7 @@ if rows:
     )
     print("trailer_reference=RMS about -16.4 dB, integrated loudness about -15.3 LUFS, true peak 0.0 dBFS")
     print("event_profile_checks=duration,envelope,onset,zero_crossing,spectral_centroid,high_low_ratio,duplicate_payloads")
+    print("sfx_manifest_checks=event_mapping,generated_substitute_provenance,official_audio_false,format,duration,sha256,bytes")
 
 if sequence_rows:
     print()
@@ -751,6 +855,8 @@ for issue in volume_issues:
     print(f"sfx_volume_issue={issue}", file=sys.stderr)
 for issue in interval_issues:
     print(f"sfx_interval_issue={issue}", file=sys.stderr)
+for issue in manifest_issues:
+    print(f"sfx_manifest_issue={issue}", file=sys.stderr)
 for name, row_issues in issues:
     for issue in row_issues:
         print(f"{name}: {issue}", file=sys.stderr)
@@ -770,9 +876,89 @@ if (
     or sequence_issues
     or volume_issues
     or interval_issues
+    or manifest_issues
     or issues
 ):
     sys.exit(1)
 
 print("local SFX audit passed")
 PY
+
+if [[ "${AUDIT_LOCAL_SFX_SKIP_PACKAGED:-0}" != "1" &&
+      -d "$packaged_sfx_dir" &&
+      "$sfx_dir" != "$packaged_sfx_dir" ]]; then
+  echo
+  echo "packaged_app_sfx_audit"
+  echo "----------------------"
+  SFX_DIR="$packaged_sfx_dir" \
+    SFX_MANIFEST="$packaged_sfx_dir/sfx_manifest.tsv" \
+    GAME_AUDIO_SWIFT="$game_audio_swift" \
+    GAME_LOOP_SWIFT="$game_loop_swift" \
+    BATTLE_SWIFT="$battle_swift" \
+    AUDIT_LOCAL_SFX_SKIP_PACKAGED=1 \
+    "$0"
+
+  python3 - "$sfx_dir" "$packaged_sfx_dir" "$game_audio_swift" "$sfx_manifest" "$packaged_sfx_dir/sfx_manifest.tsv" <<'PY'
+import hashlib
+import re
+import sys
+from pathlib import Path
+
+source_dir = Path(sys.argv[1])
+packaged_dir = Path(sys.argv[2])
+game_audio_path = Path(sys.argv[3])
+source_manifest = Path(sys.argv[4])
+packaged_manifest = Path(sys.argv[5])
+
+source = game_audio_path.read_text(encoding="utf-8")
+event_enum = re.search(r'enum\s+GameAudioEvent\s*:\s*String,\s*CaseIterable\s*\{(?P<body>.*?)\n\}', source, re.S)
+if not event_enum:
+    print(f"Could not locate GameAudioEvent enum in {game_audio_path}", file=sys.stderr)
+    sys.exit(2)
+
+audio_events = re.findall(r'^\s*case\s+(\w+)\b', event_enum.group("body"), re.M)
+resource_pairs = re.findall(r'case\s+\.(\w+):\s+return\s+"(sfx_[^"]+)"', source)
+resource_by_event = {event: resource for event, resource in resource_pairs}
+expected = sorted(
+    f"{resource_by_event[event]}.wav"
+    for event in audio_events
+    if event in resource_by_event
+)
+
+issues = []
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+for name in expected:
+    source_path = source_dir / name
+    packaged_path = packaged_dir / name
+    if not source_path.is_file():
+        issues.append(f"source SFX resource missing: {name}")
+        continue
+    if not packaged_path.is_file():
+        issues.append(f"packaged app SFX resource missing: {name}")
+        continue
+    if digest(source_path) != digest(packaged_path):
+        issues.append(f"packaged app SFX resource differs from source: {name}")
+
+extra_packaged = sorted(path.name for path in packaged_dir.glob("*.wav") if path.name not in expected)
+for name in extra_packaged:
+    issues.append(f"packaged app has unexpected SFX resource: {name}")
+
+if not source_manifest.is_file():
+    issues.append(f"source SFX manifest missing: {source_manifest}")
+elif not packaged_manifest.is_file():
+    issues.append(f"packaged app SFX manifest missing: {packaged_manifest}")
+elif digest(source_manifest) != digest(packaged_manifest):
+    issues.append("packaged app SFX manifest differs from source manifest")
+
+if issues:
+    print("packaged app SFX payload issues:")
+    for issue in issues:
+        print(f"- {issue}")
+    sys.exit(1)
+
+print(f"packaged_app_sfx_payload_match=checked wavs:{len(expected)} manifest:1")
+PY
+fi
