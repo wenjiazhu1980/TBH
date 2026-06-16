@@ -229,7 +229,8 @@ import Testing
         #expect(tracker.stageProgressText == "1/1")
 
         let killsBeforeExtraAdvance = tracker.killsInChapter
-        #expect(!tracker.advance(), "Completion settlement should block automatic progress")
+        let advanceResult = tracker.advance()
+        #expect(!advanceResult, "Completion settlement should block automatic progress")
         #expect(tracker.killsInChapter == killsBeforeExtraAdvance)
     }
 
@@ -240,7 +241,8 @@ import Testing
         }
 
         #expect(tracker.isAwaitingNewGamePlus)
-        #expect(tracker.startNextPlaythrough())
+        let playthroughResult = tracker.startNextPlaythrough()
+        #expect(playthroughResult)
         #expect(tracker.playthrough == 2)
         #expect(tracker.completedPlaythroughs == 1)
         #expect(!tracker.isAwaitingNewGamePlus)
