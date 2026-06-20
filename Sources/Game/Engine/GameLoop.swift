@@ -510,6 +510,69 @@ class GameEngine: ObservableObject {
         runeTree.canUnlock(node, heroLevel: hero.level, availableGold: hero.gold)
     }
 
+    var unlockableRuneTreeNodeCount: Int {
+        runeTreeUnlockPreview.unlockedNodes.count
+    }
+
+    var unlockableRuneTreeGoldCost: Int {
+        hero.gold - runeTreeUnlockPreview.remainingGold
+    }
+
+    @discardableResult
+    func unlockAllAvailableRuneTreeNodes() -> Int {
+        var remainingGold = hero.gold
+        let unlockedNodes = Self.unlockAvailableRuneTreeNodes(
+            in: &runeTree,
+            heroLevel: hero.level,
+            availableGold: &remainingGold
+        )
+        guard !unlockedNodes.isEmpty else { return 0 }
+
+        hero.gold = remainingGold
+        applyRuneTreeUnlocks()
+        for node in unlockedNodes {
+            refreshAutoOpenCooldowns(afterUnlocking: node)
+        }
+        startNextBattle()
+        save()
+        return unlockedNodes.count
+    }
+
+    private var runeTreeUnlockPreview: (unlockedNodes: [RuneTreeNode], remainingGold: Int) {
+        var previewRuneTree = runeTree
+        var previewGold = hero.gold
+        let unlockedNodes = Self.unlockAvailableRuneTreeNodes(
+            in: &previewRuneTree,
+            heroLevel: hero.level,
+            availableGold: &previewGold
+        )
+        return (unlockedNodes, previewGold)
+    }
+
+    private static func unlockAvailableRuneTreeNodes(
+        in runeTree: inout RuneTree,
+        heroLevel: Int,
+        availableGold: inout Int
+    ) -> [RuneTreeNode] {
+        var unlockedNodes: [RuneTreeNode] = []
+        var madeProgress = true
+
+        while madeProgress {
+            madeProgress = false
+            for node in RuneTreeNode.allCases {
+                guard !runeTree.isUnlocked(node),
+                      runeTree.unlock(node, heroLevel: heroLevel, availableGold: availableGold)
+                else { continue }
+
+                availableGold -= node.goldCost
+                unlockedNodes.append(node)
+                madeProgress = true
+            }
+        }
+
+        return unlockedNodes
+    }
+
     func directPartySlotUnlockCost(slotIndex: Int) -> Int? {
         runeTree.directPartySlotUnlockCost(for: slotIndex)
     }

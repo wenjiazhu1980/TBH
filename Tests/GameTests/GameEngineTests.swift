@@ -630,6 +630,42 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(reloaded.party.member(at: 2)?.heroClass == .slayer)
     }
 
+    @Test func oneClickRuneUnlockUnlocksAvailableChainOnce() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-\(UUID().uuidString)", isDirectory: true)
+        let manager = SaveManager(directory: tempDir)
+        let engine = GameEngine(saveManager: manager, audio: SaveRoundTripRecordingAudio())
+        engine.start()
+
+        engine.hero.gainXP(1_000)
+        engine.hero.gainGold(200_000)
+        let unlockableBefore = engine.unlockableRuneTreeNodeCount
+        let unlockCostBefore = engine.unlockableRuneTreeGoldCost
+        let unlockedCount = engine.unlockAllAvailableRuneTreeNodes()
+        let secondUnlockCount = engine.unlockAllAvailableRuneTreeNodes()
+        engine.stop()
+
+        #expect(unlockableBefore > 0)
+        #expect(unlockCostBefore == 200_000)
+        #expect(unlockedCount >= unlockableBefore)
+        #expect(engine.hero.gold == 0)
+        #expect(engine.runeTree.isUnlocked(.partySlot2))
+        #expect(engine.runeTree.isUnlocked(.partySlot3))
+        #expect(engine.runeTree.activeSkillSlotCount == 2)
+        #expect(engine.party.activeCount == 3)
+        #expect(engine.currentBattle?.party.activeCount == 3)
+        #expect(engine.unlockableRuneTreeNodeCount == 0)
+        #expect(engine.unlockableRuneTreeGoldCost == 0)
+        #expect(secondUnlockCount == 0)
+
+        let reloaded = GameEngine(saveManager: manager, audio: RecordingAudio())
+        reloaded.start()
+        reloaded.stop()
+        #expect(reloaded.hero.gold == 0)
+        #expect(reloaded.runeTree.unlockedPartySlotCount == 3)
+        #expect(reloaded.runeTree.activeSkillSlotCount == 2)
+    }
+
     @Test func activeSkillLoadoutPersistsAndRefreshesBattle() throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TBHTests-\(UUID().uuidString)", isDirectory: true)

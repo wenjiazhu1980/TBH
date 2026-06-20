@@ -5010,6 +5010,16 @@ source_rune_database_view = (
     and "runtimeModeledSourceIDs.contains(sourceNode.id)" in settings_source
     and "GameArt.sourceRuneIconName(for: sourceNode)" in settings_source
 )
+rune_tree_one_click_unlock = (
+    "unlockAllAvailableRuneTreeNodes" in game_loop_source
+    and "unlockableRuneTreeNodeCount" in game_loop_source
+    and "unlockableRuneTreeGoldCost" in game_loop_source
+    and "一键解锁符文" in settings_source
+    and "一键消耗" in settings_source
+    and "gameEngine.unlockAllAvailableRuneTreeNodes()" in settings_source
+    and "gameEngine.unlockableRuneTreeNodeCount == 0" in settings_source
+    and "one-click Rune Tree unlock previews and consumes only available checked gold once while refreshing battle state" in self_test_source
+)
 local_rune_cost_review_view = (
     "GroupBox(\"本地符文成本复核\")" in settings_source
     and "LocalRuneCostReviewView" in settings_source
@@ -6374,6 +6384,8 @@ if not source_passive_skill_database_view:
     issues.append("Settings UI must expose checked passive skill source rows, source-icon coverage and missing-icon boundaries")
 if not source_rune_database_view:
     issues.append("Settings UI must expose the complete SourceRuneCatalog review table and runtime/data-only coverage")
+if not rune_tree_one_click_unlock:
+    issues.append("Rune Tree must expose one-click available-node unlock through GameEngine, Settings UI and SelfTest")
 if not local_rune_cost_review_view:
     issues.append("Settings UI must expose local Rune cost review rows and verified/approximate/pending boundaries")
 if not source_rune_evidence_review_view:

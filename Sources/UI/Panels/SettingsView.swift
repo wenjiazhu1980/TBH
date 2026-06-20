@@ -310,6 +310,29 @@ struct SettingsView: View {
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
+                        HStack {
+                            Text("可解锁符文")
+                            Spacer()
+                            Text("\(gameEngine.unlockableRuneTreeNodeCount)")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        HStack {
+                            Text("一键消耗")
+                            Spacer()
+                            Text("\(gameEngine.unlockableRuneTreeGoldCost.formatted()) G")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(gameEngine.unlockableRuneTreeGoldCost > 0 ? .orange : .secondary)
+                        }
+
+                        Button {
+                            gameEngine.unlockAllAvailableRuneTreeNodes()
+                        } label: {
+                            Label("一键解锁符文", systemImage: "sparkles")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(gameEngine.unlockableRuneTreeNodeCount == 0)
 
                         ForEach(RuneTreeNode.allCases) { node in
                             RuneTreeNodeRow(

@@ -12175,6 +12175,33 @@ enum SelfTest {
         formationEngine.resetRuneTree()
         expect(formationEngine.hero.gold == 200_000 && formationEngine.party.activeCount == 1, "Rune Tree reset refunds directly spent checked formation gold and relocks party slots")
 
+        let oneClickRuneEngine = GameEngine(
+            saveManager: SaveManager(
+                directory: tempDir.appendingPathComponent("one-click-rune-unlock", isDirectory: true)
+            ),
+            audio: SilentAudio()
+        )
+        oneClickRuneEngine.hero.gainXP(1_000)
+        oneClickRuneEngine.hero.gainGold(200_000)
+        let oneClickAvailableCount = oneClickRuneEngine.unlockableRuneTreeNodeCount
+        let oneClickGoldCost = oneClickRuneEngine.unlockableRuneTreeGoldCost
+        let oneClickUnlockedCount = oneClickRuneEngine.unlockAllAvailableRuneTreeNodes()
+        let oneClickRepeatCount = oneClickRuneEngine.unlockAllAvailableRuneTreeNodes()
+        expect(
+            oneClickAvailableCount > 0 &&
+                oneClickGoldCost == 200_000 &&
+                oneClickUnlockedCount >= oneClickAvailableCount &&
+                oneClickRepeatCount == 0 &&
+                oneClickRuneEngine.hero.gold == 0 &&
+                oneClickRuneEngine.runeTree.unlockedPartySlotCount == 3 &&
+                oneClickRuneEngine.runeTree.activeSkillSlotCount == 2 &&
+                oneClickRuneEngine.party.activeCount == 3 &&
+                oneClickRuneEngine.currentBattle?.party.activeCount == 3 &&
+                oneClickRuneEngine.unlockableRuneTreeNodeCount == 0 &&
+                oneClickRuneEngine.unlockableRuneTreeGoldCost == 0,
+            "one-click Rune Tree unlock previews and consumes only available checked gold once while refreshing battle state"
+        )
+
         engine.hero.gold = 200_000
         expect(engine.unlockRuneTreeNode(.partySlot2) && engine.hero.gold == 150_000, "second party slot spends checked 50,000 gold")
         expect(engine.unlockRuneTreeNode(.partySlot3) && engine.hero.gold == 0, "third party slot spends checked 150,000 gold")
