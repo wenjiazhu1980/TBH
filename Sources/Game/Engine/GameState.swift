@@ -147,16 +147,32 @@ struct ProgressTracker: Codable {
     }
 
     var stageProgressText: String {
-        let target = currentStage.clearTarget(for: currentDifficulty)
+        stageProgressText(clearTargetReduction: 0)
+    }
+
+    func stageProgressText(clearTargetReduction: Int) -> String {
+        let target = currentStage.clearTarget(for: currentDifficulty, clearTargetReduction: clearTargetReduction)
         return "\(min(killsInChapter, target))/\(target)"
     }
 
     var currentEncounterState: StageEncounterState {
-        currentStage.encounterState(for: currentDifficulty, encounterIndex: killsInChapter)
+        currentEncounterState(clearTargetReduction: 0)
+    }
+
+    func currentEncounterState(clearTargetReduction: Int) -> StageEncounterState {
+        currentStage.encounterState(
+            for: currentDifficulty,
+            encounterIndex: killsInChapter,
+            clearTargetReduction: clearTargetReduction
+        )
     }
 
     var currentEncounterPlan: StageEncounterPlan {
-        currentStage.encounterPlan(for: currentDifficulty)
+        currentEncounterPlan(clearTargetReduction: 0)
+    }
+
+    func currentEncounterPlan(clearTargetReduction: Int) -> StageEncounterPlan {
+        currentStage.encounterPlan(for: currentDifficulty, clearTargetReduction: clearTargetReduction)
     }
 
     var waveProgressText: String {
@@ -222,11 +238,18 @@ struct ProgressTracker: Codable {
 
     /// 每次胜利调用：清完当前关推进到下一关；全 Act 通关后进入下一 Act；全难度通关后封顶。
     @discardableResult
-    mutating func advance(chestStorageLimits: ChestStorageLimits = .unlimited) -> Bool {
+    mutating func advance(
+        chestStorageLimits: ChestStorageLimits = .unlimited,
+        clearTargetReduction: Int = 0,
+        chestDropBonuses: ChestDropBonuses = .none
+    ) -> Bool {
         guard !isAwaitingNewGamePlus else { return false }
         killsInChapter += 1
         let clearedStage = currentStage
-        let clearTarget = clearedStage.clearTarget(for: currentDifficulty)
+        let clearTarget = clearedStage.clearTarget(
+            for: currentDifficulty,
+            clearTargetReduction: clearTargetReduction
+        )
         guard killsInChapter >= clearTarget else { return false }
 
         if let required = clearedStage.requiredSoulStone(for: currentDifficulty) {
@@ -237,7 +260,7 @@ struct ProgressTracker: Codable {
         }
 
         recordClearedStage(clearedStage)
-        for chest in clearedStage.chestRewards(for: currentDifficulty) {
+        for chest in clearedStage.chestRewards(for: currentDifficulty, chestDropBonuses: chestDropBonuses) {
             chests.add(chest, limits: chestStorageLimits)
         }
 
@@ -289,11 +312,20 @@ struct ProgressTracker: Codable {
     }
 
     @discardableResult
-    mutating func advance(by encountersCleared: Int, chestStorageLimits: ChestStorageLimits = .unlimited) -> Bool {
+    mutating func advance(
+        by encountersCleared: Int,
+        chestStorageLimits: ChestStorageLimits = .unlimited,
+        clearTargetReduction: Int = 0,
+        chestDropBonuses: ChestDropBonuses = .none
+    ) -> Bool {
         guard encountersCleared > 0 else { return false }
         var clearedAnyStage = false
         for _ in 0..<encountersCleared {
-            clearedAnyStage = advance(chestStorageLimits: chestStorageLimits) || clearedAnyStage
+            clearedAnyStage = advance(
+                chestStorageLimits: chestStorageLimits,
+                clearTargetReduction: clearTargetReduction,
+                chestDropBonuses: chestDropBonuses
+            ) || clearedAnyStage
         }
         return clearedAnyStage
     }

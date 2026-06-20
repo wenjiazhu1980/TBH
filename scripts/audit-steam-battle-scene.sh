@@ -228,6 +228,138 @@ print(
 )
 PY
 
+motion_dir="$tmpdir/frame-motion"
+mkdir -p "$motion_dir"
+ffmpeg \
+  -hide_banner \
+  -nostdin \
+  -v error \
+  -i "$preferred_url" \
+  -vf "select='eq(n,0)+eq(n,8)'" \
+  -vsync vfr \
+  "$motion_dir/battlescene-motion-%02d.png"
+
+echo
+echo "== Frame-to-frame motion sample =="
+python3 - "$motion_dir" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    from PIL import Image
+except Exception as exc:
+    print(f"Pillow is required for motion analysis: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+frame_dir = Path(sys.argv[1])
+paths = sorted(frame_dir.glob("battlescene-motion-*.png"))
+if len(paths) < 2:
+    print("expected at least two motion sample frames", file=sys.stderr)
+    sys.exit(1)
+
+base = Image.open(paths[0]).convert("RGB")
+motion = Image.open(paths[1]).convert("RGB")
+if base.size != motion.size:
+    print(f"motion frame size mismatch: base={base.size}, motion={motion.size}", file=sys.stderr)
+    sys.exit(1)
+
+width, height = base.size
+base_pixels = base.load()
+motion_pixels = motion.load()
+
+warm_rows = []
+minimum_warm_hits_per_row = max(48, int(width * 0.08))
+for y in range(int(height * 0.68), height):
+    xs = []
+    for x in range(width):
+        red, green, blue = base_pixels[x, y]
+        is_warm_ground = (
+            red >= 130
+            and 70 <= green <= 230
+            and blue <= 140
+            and red > green * 1.05
+            and green > blue * 1.05
+        )
+        if is_warm_ground:
+            xs.append(x)
+
+    if len(xs) >= minimum_warm_hits_per_row:
+        warm_rows.append((y, min(xs), max(xs), len(xs)))
+
+groups = []
+current = []
+for row in warm_rows:
+    if not current or row[0] <= current[-1][0] + 2:
+        current.append(row)
+    else:
+        groups.append(current)
+        current = [row]
+if current:
+    groups.append(current)
+
+candidates = []
+for group in groups:
+    min_y = min(row[0] for row in group)
+    max_y = max(row[0] for row in group)
+    min_x = min(row[1] for row in group)
+    max_x = max(row[2] for row in group)
+    band_width = max_x - min_x + 1
+    band_height = max_y - min_y + 1
+    total_hits = sum(row[3] for row in group)
+    if band_width >= width * 0.55 and band_height >= height * 0.14:
+        candidates.append((band_width * band_height, total_hits, min_x, min_y, max_x, max_y))
+
+if not candidates:
+    print("lower warm platform not detected in motion base frame", file=sys.stderr)
+    sys.exit(1)
+
+_, _, min_x, min_y, max_x, max_y = max(candidates)
+platform_area = (max_x - min_x + 1) * (max_y - min_y + 1)
+total_pixels = width * height
+motion_threshold = 36
+total_motion_pixels = 0
+platform_motion_pixels = 0
+non_platform_motion_pixels = 0
+
+for y in range(height):
+    for x in range(width):
+        current_rgb = base_pixels[x, y]
+        next_rgb = motion_pixels[x, y]
+        diff = sum(abs(current_rgb[channel] - next_rgb[channel]) for channel in range(3))
+        if diff <= motion_threshold:
+            continue
+
+        total_motion_pixels += 1
+        if min_x <= x <= max_x and min_y <= y <= max_y:
+            platform_motion_pixels += 1
+        else:
+            non_platform_motion_pixels += 1
+
+minimum_total_motion_pixels = max(80, int(total_pixels * 0.002))
+minimum_platform_motion_pixels = max(40, int(platform_area * 0.002))
+if total_motion_pixels < minimum_total_motion_pixels:
+    print(
+        "official battlescene motion is too subtle between sampled frames: "
+        f"total_motion_pixels={total_motion_pixels}, min={minimum_total_motion_pixels}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+if platform_motion_pixels < minimum_platform_motion_pixels:
+    print(
+        "official battlescene lower-platform motion is too subtle between sampled frames: "
+        f"platform_motion_pixels={platform_motion_pixels}, min={minimum_platform_motion_pixels}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print("motion_frame_delta=8")
+print(f"motion_frame_interval_seconds={8 / 30:.3f}")
+print(f"official_motion_pixels={total_motion_pixels}")
+print(f"official_platform_motion_pixels={platform_motion_pixels}")
+print(f"official_non_platform_motion_pixels={non_platform_motion_pixels}")
+print(f"official_motion_percent={total_motion_pixels / total_pixels:.4f}")
+PY
+
 if [[ "$keep_frames" == "1" ]]; then
   echo
   echo "== Extracted sample frames =="

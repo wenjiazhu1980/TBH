@@ -16,7 +16,37 @@ struct InventoryView: View {
     let onInfuseIntoCube: (Item) -> Void
     let onAlchemize: (Item) -> Void
     let onSynthesize: (Rarity) -> Item?
-    @State private var selectedItems: Set<Item> = []
+    @State private var selectedItems: Set<Item>
+
+    init(
+        inventory: Inventory,
+        hero: Hero,
+        cubeProgress: CubeProgress,
+        purchasedExpansionCount: Int,
+        nextExpansionCost: Int,
+        worseEquipmentHandling: WorseEquipmentHandling,
+        onEquip: @escaping (Item) -> Void,
+        onExpandInventory: @escaping () -> Void,
+        onWorseEquipmentHandlingChange: @escaping (WorseEquipmentHandling) -> Void,
+        onInfuseIntoCube: @escaping (Item) -> Void,
+        onAlchemize: @escaping (Item) -> Void,
+        onSynthesize: @escaping (Rarity) -> Item?,
+        initialSelectedItems: Set<Item> = []
+    ) {
+        self.inventory = inventory
+        self.hero = hero
+        self.cubeProgress = cubeProgress
+        self.purchasedExpansionCount = purchasedExpansionCount
+        self.nextExpansionCost = nextExpansionCost
+        self.worseEquipmentHandling = worseEquipmentHandling
+        self.onEquip = onEquip
+        self.onExpandInventory = onExpandInventory
+        self.onWorseEquipmentHandlingChange = onWorseEquipmentHandlingChange
+        self.onInfuseIntoCube = onInfuseIntoCube
+        self.onAlchemize = onAlchemize
+        self.onSynthesize = onSynthesize
+        _selectedItems = State(initialValue: initialSelectedItems)
+    }
 
     var selectedItem: Item? {
         guard let selected = selectedItems.first else { return nil }
@@ -309,6 +339,12 @@ struct ItemDetailHeader: View {
                         .font(.system(size: 8))
                         .foregroundColor(.secondary)
                 }
+                if let source = item.sourceGearProgression {
+                    Label("\(source.name) #\(source.id)", systemImage: "tag.fill")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
                 Text("D/E/I \(item.rarity.slotSummary) · Cube +\(item.rarity.cubeExperience) · 炼金 +\(item.rarity.alchemyGoldValue)G")
                     .font(.system(size: 8, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -389,6 +425,11 @@ private struct SynthesisPreviewView: View {
                     if preview.lockedInputCount > 0 {
                         Label("锁定 \(preview.lockedInputCount)", systemImage: "lock.fill")
                             .foregroundColor(.secondary)
+                    }
+                    if let sourceResultExample = preview.sourceResultExample {
+                        Label(sourceResultExample.displayText, systemImage: "percent")
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
                     }
                     if let boundary = preview.sourceVariantBoundary {
                         Text(boundary)

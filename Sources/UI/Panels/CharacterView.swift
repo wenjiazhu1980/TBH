@@ -6,6 +6,8 @@ struct CharacterView: View {
     let party: HeroParty
     let activeSkillLoadouts: ActiveSkillLoadouts
     let activeSkillSlotCount: Int
+    let allHeroAttackDamageBonus: Int
+    let allHeroAttackDamageMultiplier: Double
     let onClassChange: (HeroClass) -> Void
     let onPartyMemberChange: (Int, HeroClass) -> Void
     let partySlotUnlockCost: (Int) -> Int?
@@ -109,7 +111,7 @@ struct CharacterView: View {
                             Text("上阵 \(party.activeCount)/\(HeroParty.maxSlots)")
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             Spacer()
-                            Text("支援攻击 +\(party.supportAttackPower(heroLevel: hero.level))")
+                            Text("支援攻击 +\(party.supportAttackPower(heroLevel: hero.level, allHeroAttackDamageBonus: allHeroAttackDamageBonus, allHeroAttackDamageMultiplier: allHeroAttackDamageMultiplier))")
                                 .font(.system(size: 9, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
@@ -118,6 +120,8 @@ struct CharacterView: View {
                             PartySlotRow(
                                 member: member,
                                 heroLevel: hero.level,
+                                allHeroAttackDamageBonus: allHeroAttackDamageBonus,
+                                allHeroAttackDamageMultiplier: allHeroAttackDamageMultiplier,
                                 unlockCost: partySlotUnlockCost(member.slotIndex),
                                 canUnlock: canUnlockPartySlot(member.slotIndex),
                                 onUnlock: { onPartySlotUnlock(member.slotIndex) },
@@ -357,6 +361,8 @@ private struct ActiveSkillSlotPicker: View {
 private struct PartySlotRow: View {
     let member: PartyMember
     let heroLevel: Int
+    let allHeroAttackDamageBonus: Int
+    let allHeroAttackDamageMultiplier: Double
     let unlockCost: Int?
     let canUnlock: Bool
     let onUnlock: () -> Void
@@ -384,7 +390,7 @@ private struct PartySlotRow: View {
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(.accentColor)
                     } else {
-                        Text("+\(member.supportAttackPower(heroLevel: heroLevel))")
+                        Text("+\(member.supportAttackPower(heroLevel: heroLevel, allHeroAttackDamageBonus: allHeroAttackDamageBonus, allHeroAttackDamageMultiplier: allHeroAttackDamageMultiplier))")
                             .font(.system(size: 8, weight: .bold, design: .monospaced))
                             .foregroundColor(.secondary)
                     }

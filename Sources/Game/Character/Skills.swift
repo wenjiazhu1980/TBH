@@ -23,6 +23,23 @@ enum SkillDamageElement: String, Codable, CaseIterable {
             return false
         }
     }
+
+    var battleLogLabel: String? {
+        switch self {
+        case .none:
+            return nil
+        case .physical:
+            return "物理"
+        case .fire:
+            return "火"
+        case .cold:
+            return "冰"
+        case .lightning:
+            return "电"
+        case .chaos:
+            return "混沌"
+        }
+    }
 }
 
 enum SkillDelivery: String, Codable, CaseIterable {
@@ -56,6 +73,14 @@ struct Skill: Identifiable, Codable {
 
     var levelOneValue: Int {
         value(at: 1)
+    }
+
+    var sourceSkill: SourceSkill? {
+        SourceSkillCatalog.skill(id: id)
+    }
+
+    var sourceRange: Int? {
+        sourceSkill?.range
     }
 
     init(
@@ -158,9 +183,32 @@ struct SourceSkill: Identifiable, Codable, Equatable {
     let damageType: String
     let delivery: String
     let range: Int
+    let sourceValue: Int?
+
+    init(
+        id: String,
+        name: String,
+        activation: SkillActivation,
+        damageType: String,
+        delivery: String,
+        range: Int,
+        sourceValue: Int? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.activation = activation
+        self.damageType = damageType
+        self.delivery = delivery
+        self.range = range
+        self.sourceValue = sourceValue
+    }
 
     var isRuntimeModeled: Bool {
         SourceSkillCatalog.runtimeModeledSkillIDs.contains(id)
+    }
+
+    var sourceValueText: String {
+        sourceValue.map(String.init) ?? "未核对"
     }
 
     var runtimeDamageElement: SkillDamageElement {
@@ -218,8 +266,30 @@ enum SourceSkillCatalog {
     static let expectedSourceCount = 106
     static let all: [SourceSkill] = parseSourceRows()
 
+    static var runtimeNamedHeroSkillIDs: Set<String> {
+        HeroSkills.namedSourceSkillIDs
+    }
+
+    static var runtimeHeroBaseAttackSkillIDs: Set<String> {
+        HeroSkills.baseAttackSourceSkillIDs
+    }
+
+    static var runtimeHeroSkillIDs: Set<String> {
+        runtimeNamedHeroSkillIDs.union(runtimeHeroBaseAttackSkillIDs)
+    }
+
+    static var runtimeMonsterAttackSkillIDs: Set<String> {
+        Set(monsterSourceSkillIDsByName.values)
+    }
+
+    static var runtimeMonsterAttackMappings: [(monsterName: String, sourceSkillID: String)] {
+        monsterSourceSkillIDsByName
+            .map { (monsterName: $0.key, sourceSkillID: $0.value) }
+            .sorted { $0.sourceSkillID < $1.sourceSkillID }
+    }
+
     static var runtimeModeledSkillIDs: Set<String> {
-        Set(HeroClass.allCases.flatMap { HeroSkills.named(for: $0).map(\.id) })
+        runtimeHeroSkillIDs.union(runtimeMonsterAttackSkillIDs)
     }
 
     static var runtimeModeledSkills: [SourceSkill] {
@@ -228,6 +298,10 @@ enum SourceSkillCatalog {
 
     static func skill(id: String) -> SourceSkill? {
         all.first { $0.id == id }
+    }
+
+    static func sourceSkillID(forMonsterNamed name: String) -> String? {
+        monsterSourceSkillIDsByName[name]
     }
 
     static func skills(activation: SkillActivation) -> [SourceSkill] {
@@ -245,7 +319,7 @@ enum SourceSkillCatalog {
     private static func parseSourceRows() -> [SourceSkill] {
         sourceSkillTSV.split(separator: "\n").compactMap { row in
             let columns = row.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard columns.count == 6,
+            guard (columns.count == 6 || columns.count == 7),
                   let activation = SkillActivation(rawValue: columns[2]),
                   let range = Int(columns[5]) else {
                 return nil
@@ -256,10 +330,18 @@ enum SourceSkillCatalog {
                 activation: activation,
                 damageType: columns[3],
                 delivery: columns[4],
-                range: range
+                range: range,
+                sourceValue: columns.count == 7 ? Int(columns[6]) : nil
             )
         }
     }
+
+    private static let monsterSourceSkillIDsByName: [String: String] = [
+        "燃烧的地狱祭司": "301015",
+        "冰冻的地狱祭司": "301025",
+        "电流的地狱祭司": "301035",
+        "混沌的地狱祭司": "301045"
+    ]
 
     private static let sourceSkillTSV = """
 10001	Skill 10001	BASEATTACK	Physical	Melee	140
@@ -316,10 +398,10 @@ enum SourceSkillCatalog {
 100521	Skill 100521	BASEATTACK	Physical		900
 100531	Skill 100531	BASEATTACK	Physical		300
 109011	Skill 109011	BASEATTACK	Physical		300
-109021	Skill 109021	BASEATTACK_COUNT	Physical		450
-109031	Skill 109031	COOLDOWN	Physical		700
-109041	Skill 109041	COOLDOWN	Physical		300
-109051	Skill 109051	COOLDOWN	Physical		700
+109021	Skill 109021	BASEATTACK_COUNT	Physical		450	1500
+109031	Skill 109031	COOLDOWN	Physical		700	1500
+109041	Skill 109041	COOLDOWN	Physical		300	1500
+109051	Skill 109051	COOLDOWN	Physical		700	1500
 200111	Skill 200111	BASEATTACK	Physical		150
 200211	Skill 200211	BASEATTACK	Physical		130
 200221	Skill 200221	BASEATTACK	Physical		900
@@ -327,7 +409,7 @@ enum SourceSkillCatalog {
 200241	Skill 200241	BASEATTACK	Physical		170
 200311	Skill 200311	BASEATTACK	Physical		200
 200411	Skill 200411	BASEATTACK	Chaos		150
-200421	Skill 200421	BASEATTACK	Chaos		800
+200421	Skill 200421	BASEATTACK	Chaos		800	1000
 200511	Skill 200511	BASEATTACK	Physical		200
 200611	Skill 200611	BASEATTACK	Physical		170
 200621	Skill 200621	BASEATTACK	Physical		900
@@ -335,12 +417,12 @@ enum SourceSkillCatalog {
 200811	Skill 200811	BASEATTACK	Physical		150
 200911	Skill 200911	BASEATTACK	Fire		800
 201111	Skill 201111	BASEATTACK	Physical		170
-201211	Skill 201211	BASEATTACK	Physical		130
+201211	Skill 201211	BASEATTACK	Physical		130	1000
 209011	Skill 209011	BASEATTACK	Physical		230
-209021	Skill 209021	COOLDOWN	Physical		250
-209031	Skill 209031	BASEATTACK_COUNT	Physical		600
-209041	Skill 209041	COOLDOWN	Physical		270
-209051	Skill 209051	COOLDOWN	Physical		600
+209021	Skill 209021	COOLDOWN	Physical		250	1800
+209031	Skill 209031	BASEATTACK_COUNT	Physical		600	1350
+209041	Skill 209041	COOLDOWN	Physical		270	2300
+209051	Skill 209051	COOLDOWN	Physical		600	2000
 300111	Skill 300111	BASEATTACK	Physical		130
 300121	Skill 300121	BASEATTACK	Physical		150
 300131	Skill 300131	BASEATTACK	Physical		170
@@ -349,7 +431,7 @@ enum SourceSkillCatalog {
 300411	Skill 300411	BASEATTACK	Physical		170
 300421	Skill 300421	BASEATTACK	Physical		900
 300431	Skill 300431	BASEATTACK	Physical		200
-300441	Skill 300441	BASEATTACK	Cold		800
+300441	Skill 300441	BASEATTACK	Cold		800	1000
 300511	Skill 300511	BASEATTACK	Physical		200
 300611	Skill 300611	BASEATTACK	Fire		170
 300711	Skill 300711	BASEATTACK	Chaos		800
@@ -364,10 +446,10 @@ enum SourceSkillCatalog {
 301045	Skill 301045	BASEATTACK	Chaos		800
 301111	Skill 301111	BASEATTACK	Physical		150
 309011	Skill 309011	BASEATTACK	Chaos		700
-309021	Skill 309021	COOLDOWN	Chaos		700
-309031	Skill 309031	COOLDOWN	Physical		800
-309041	Skill 309041	COOLDOWN	Chaos		700
-309051	Skill 309051	COOLDOWN	Chaos		600
+309021	Skill 309021	COOLDOWN	Chaos		700	800
+309031	Skill 309031	COOLDOWN	Physical		800	1500
+309041	Skill 309041	COOLDOWN	Chaos		700	1700
+309051	Skill 309051	COOLDOWN	Chaos		600	2300
 """
 }
 
@@ -689,6 +771,14 @@ struct PassiveSkillRuntimeEffects: Codable, Equatable {
 enum HeroSkills {
     static let defaultActiveSkillSlotCount = 1
     static let maximumModeledActiveSkillSlots = 6
+
+    static var namedSourceSkillIDs: Set<String> {
+        Set(HeroClass.allCases.flatMap { named(for: $0).map(\.id) })
+    }
+
+    static var baseAttackSourceSkillIDs: Set<String> {
+        Set(HeroClass.allCases.map(baseAttackSourceSkillID(for:)))
+    }
 
     static func baseAttackSourceSkill(for heroClass: HeroClass) -> SourceSkill? {
         SourceSkillCatalog.skill(id: baseAttackSourceSkillID(for: heroClass))

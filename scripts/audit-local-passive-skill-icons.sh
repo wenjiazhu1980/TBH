@@ -268,3 +268,125 @@ if issues:
 print(f"packaged_app_passive_skill_icon_payload_match=checked icons:{len(expected)}")
 PY
 fi
+
+if [[ "${AUDIT_REMOTE_PASSIVE_SKILL_SOURCE:-0}" == "1" &&
+      "${AUDIT_LOCAL_PASSIVE_SKILL_ICONS_SKIP_PACKAGED:-0}" != "1" ]]; then
+  echo
+  echo "remote_passive_skill_source_audit"
+  echo "---------------------------------"
+  python3 - <<'PY'
+import re
+import sys
+from html import unescape
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+source_urls = [
+    "https://taskbarhero.org/en/skills/",
+    "https://taskbarhero.org/zh/skills/",
+]
+expected_missing_stats = {"IncreaseProjectileDamage", "SkillHealIncrease"}
+expected_target_rows = {
+    ("201022", "IncreaseProjectileDamage"),
+    ("201062", "IncreaseProjectileDamage"),
+    ("401022", "SkillHealIncrease"),
+    ("401082", "SkillHealIncrease"),
+}
+candidate_assets = [
+    "https://taskbarhero.org/assets/tbhdb/game/skills/Passive_IncreaseProjectileDamage.png",
+    "https://taskbarhero.org/assets/tbhdb/game/skills/Passive_SkillHealIncrease.png",
+]
+
+
+def fetch(url):
+    request = Request(url, headers={"User-Agent": "TBH passive icon source audit"})
+    with urlopen(request, timeout=30) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def asset_status(url):
+    request = Request(url, headers={"User-Agent": "TBH passive icon source audit"}, method="HEAD")
+    try:
+        with urlopen(request, timeout=30) as response:
+            return response.status
+    except HTTPError as exc:
+        return exc.code
+
+
+issues = []
+for source_url in source_urls:
+    try:
+        html = fetch(source_url)
+    except (HTTPError, URLError, TimeoutError) as exc:
+        issues.append(f"failed to fetch {source_url}: {exc}")
+        continue
+
+    rows = re.findall(
+        r'<tr\b[^>]*data-id="\d{6}"[^>]*data-stat="[^"]+"[^>]*>.*?</tr>',
+        html,
+        re.S,
+    )
+    icon_rows = []
+    missing_rows = []
+    target_rows = []
+    icon_families = set()
+    for row in rows:
+        attrs = dict(re.findall(r'\b(data-[a-z]+)="([^"]*)"', row))
+        row_id = attrs.get("data-id", "")
+        name = unescape(attrs.get("data-name", ""))
+        stat = unescape(attrs.get("data-stat", ""))
+        image = re.search(r'<img\b[^>]*class="db-icon"[^>]*src="([^"]+)"', row)
+        source = image.group(1) if image else ""
+        if source:
+            icon_rows.append(row)
+            icon_families.add(source.rsplit("/", 1)[-1])
+        else:
+            missing_rows.append((row_id, name, stat))
+        if stat in expected_missing_stats:
+            target_rows.append((row_id, name, stat, source or "NO_ICON"))
+
+    missing_stats = {stat for _, _, stat in missing_rows}
+    target_id_stats = {(row_id, stat) for row_id, _, stat, _ in target_rows}
+    target_icon_sources = {source for _, _, _, source in target_rows}
+
+    print(f"source_url={source_url}")
+    print(f"remote_passive_rows={len(rows)}")
+    print(f"remote_source_icon_rows={len(icon_rows)}")
+    print(f"remote_unique_icon_families={len(icon_families)}")
+    print(f"remote_missing_source_icon_stats={','.join(sorted(missing_stats))}")
+    print("remote_target_rows=" + ";".join(
+        f"{row_id}:{stat}:{source}" for row_id, _, stat, source in target_rows
+    ))
+
+    if len(rows) != 108:
+        issues.append(f"{source_url} expected 108 passive rows, got {len(rows)}")
+    if len(icon_rows) != 104:
+        issues.append(f"{source_url} expected 104 passive rows with db-icon, got {len(icon_rows)}")
+    if len(icon_families) != 27:
+        issues.append(f"{source_url} expected 27 passive icon families, got {len(icon_families)}")
+    if missing_stats != expected_missing_stats:
+        issues.append(f"{source_url} unexpected missing stats: {','.join(sorted(missing_stats))}")
+    if target_id_stats != expected_target_rows:
+        issues.append(f"{source_url} unexpected target missing rows: {sorted(target_id_stats)}")
+    if target_icon_sources != {"NO_ICON"}:
+        issues.append(f"{source_url} target missing rows unexpectedly expose icons: {target_icon_sources}")
+
+for asset_url in candidate_assets:
+    try:
+        status = asset_status(asset_url)
+    except (HTTPError, URLError, TimeoutError) as exc:
+        issues.append(f"failed to check candidate asset {asset_url}: {exc}")
+        continue
+    print(f"remote_candidate_asset={asset_url} status={status}")
+    if status != 404:
+        issues.append(f"candidate asset should stay absent until source exposes it: {asset_url} status={status}")
+
+if issues:
+    print("\nremote passive skill source issues:")
+    for issue in issues:
+        print(f"- {issue}")
+    sys.exit(1)
+
+print("remote passive skill source audit passed")
+PY
+fi

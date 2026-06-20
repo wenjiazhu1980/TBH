@@ -47,6 +47,8 @@ struct MenuBarPopover: View {
                         party: gameEngine.party,
                         activeSkillLoadouts: gameEngine.activeSkillLoadouts,
                         activeSkillSlotCount: gameEngine.runeTree.activeSkillSlotCount,
+                        allHeroAttackDamageBonus: gameEngine.runeTree.allHeroAttackDamage,
+                        allHeroAttackDamageMultiplier: gameEngine.runeTree.allHeroAttackDamageMultiplier,
                         onClassChange: { gameEngine.setHeroClass($0) },
                         onPartyMemberChange: { slotIndex, heroClass in
                             gameEngine.setPartyMember(slotIndex: slotIndex, heroClass: heroClass)
@@ -71,11 +73,11 @@ struct MenuBarPopover: View {
                     )
                 }
             }
-            .frame(minHeight: 280)
+            .frame(minHeight: MenuBarPopoverLayout.contentMinHeight, maxHeight: .infinity)
 
             Divider()
 
-            // 底部导航栏
+            // 底部菜单栏
             HStack(spacing: 0) {
                 ForEach(Tab.allCases, id: \.self) { tab in
                     TabBarButton(
@@ -86,11 +88,18 @@ struct MenuBarPopover: View {
                 }
             }
             .background(Color(NSColor.controlBackgroundColor))
+            .frame(height: MenuBarPopoverLayout.bottomTabHeight)
         }
         .frame(
             width: MenuBarPopoverLayout.size(for: popoverScale).width,
             height: MenuBarPopoverLayout.size(for: popoverScale).height
         )
+        .onAppear {
+            gameEngine.setInterfaceAudioActive(true)
+        }
+        .onDisappear {
+            gameEngine.setInterfaceAudioActive(false)
+        }
     }
 
     private var panelScaleBinding: Binding<Double> {
@@ -107,10 +116,12 @@ struct MenuBarPopover: View {
 
 enum MenuBarPopoverLayout {
     static let defaultScale: Double = 1.0
-    static let minimumScale: Double = 0.85
-    static let maximumScale: Double = 1.25
+    static let minimumScale: Double = 1.0
+    static let maximumScale: Double = 1.0
     static let scaleStep: Double = 0.05
-    static let defaultSize = CGSize(width: 430, height: 520)
+    static let contentMinHeight: CGFloat = 488
+    static let bottomTabHeight: CGFloat = 46
+    static let defaultSize = CGSize(width: 640, height: 600)
 
     static func normalizedScale(_ scale: Double) -> Double {
         min(max(scale, minimumScale), maximumScale)
@@ -137,7 +148,7 @@ enum OriginalControlShortcuts {
     }
 }
 
-private struct TabBarButton: View {
+struct TabBarButton: View {
     let tab: MenuBarPopover.Tab
     let isSelected: Bool
     let action: () -> Void
@@ -172,7 +183,7 @@ enum TabBarIconMetrics {
     static let height: CGFloat = 16
 }
 
-private struct TabBarIcon: View {
+struct TabBarIcon: View {
     let tab: MenuBarPopover.Tab
     let color: Color
 
@@ -379,7 +390,8 @@ struct HeroSummaryBar: View {
                 }
             }
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(Color(NSColor.windowBackgroundColor))
     }
 }

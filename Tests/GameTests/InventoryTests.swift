@@ -15,6 +15,12 @@ import Foundation
         #expect(Rarity.common.synthesisOutputRarity == .uncommon)
         #expect(Rarity.divine.synthesisOutputRarity == .cosmic)
         #expect(Rarity.cosmic.synthesisOutputRarity == nil)
+        #expect(Rarity.sourceSynthesisSkipExamples == [
+            SourceSynthesisSkipExample(from: .common, to: .rare, chanceText: "~60%"),
+            SourceSynthesisSkipExample(from: .uncommon, to: .legendary, chanceText: "~40%"),
+            SourceSynthesisSkipExample(from: .rare, to: .legendary, chanceText: "~20%"),
+            SourceSynthesisSkipExample(from: .legendary, to: .immortal, chanceText: "~5%")
+        ])
     }
 
     @Test func synthesisPreviewShowsEligibleInputsLockedItemsAndOutputLevel() {
@@ -49,12 +55,15 @@ import Foundation
         #expect(preview.selectedInputCount == 9)
         #expect(preview.outputItemLevel == 12)
         #expect(preview.outputSourceProgression == SourceGearLevelProgression(id: "300003", itemLevel: 10, name: "Rapier"))
+        #expect(preview.sourceResultExample == SourceSynthesisSkipExample(from: .common, to: .rare, chanceText: "~60%"))
+        #expect(preview.sourceResultExample?.displayText == "普通 -> 稀有 ~60%")
         #expect(preview.sourceVariantBoundary == "跳阶/降级概率未核实")
 
         let cosmicPreview = SynthesisPreview.make(for: .cosmic, in: inputs)
         #expect(!cosmicPreview.isReady)
         #expect(cosmicPreview.outputRarity == nil)
         #expect(cosmicPreview.outputSourceProgression == nil)
+        #expect(cosmicPreview.sourceResultExample == nil)
         #expect(cosmicPreview.sourceVariantBoundary == nil)
     }
 
@@ -279,8 +288,33 @@ import Foundation
         #expect(item.slot == .weapon)
         #expect(item.itemLevel == 12)
         #expect(item.name == "Blessed Scepter")
+        #expect(item.sourceGearID == "330003")
+        #expect(item.sourceGearProgression == SourceGearLevelProgression(id: "330003", itemLevel: 10, name: "Blessed Scepter"))
         #expect(item.description.contains("Scepter"))
         #expect(item.description.contains("来源装备 330003"))
         #expect(GameArt.itemIconName(for: item) == "source_gear_330003")
+    }
+
+    @Test func sourceGearIDMigratesFromLegacyDescriptionAndDrivesIcon() throws {
+        let legacyJSON = #"{"id":"legacy-source","name":"旧权杖","rarity":"稀有","slot":"武器","equipmentType":"Scepter","itemLevel":12,"stats":{"bonusHP":0,"bonusATK":1,"bonusDEF":0,"bonusSPD":0,"bonusCritRate":0,"bonusCritDamage":0},"description":"Lv.12 稀有品质的Scepter · 来源装备 330003"}"#
+        let legacy = try JSONDecoder().decode(Item.self, from: Data(legacyJSON.utf8))
+
+        #expect(legacy.sourceGearID == "330003")
+        #expect(legacy.sourceGearProgression == SourceGearLevelProgression(id: "330003", itemLevel: 10, name: "Blessed Scepter"))
+        #expect(GameArt.itemIconName(for: legacy) == "source_gear_330003")
+
+        let explicit = Item(
+            id: "explicit-source",
+            name: "错级剑",
+            rarity: .common,
+            slot: .weapon,
+            stats: ItemStats(),
+            description: "",
+            itemLevel: 1,
+            equipmentType: .sword,
+            sourceGearID: "300003"
+        )
+        #expect(explicit.sourceGearProgression == SourceGearLevelProgression(id: "300003", itemLevel: 10, name: "Rapier"))
+        #expect(GameArt.itemIconName(for: explicit) == "source_gear_300003")
     }
 }

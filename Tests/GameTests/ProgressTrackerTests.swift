@@ -22,6 +22,18 @@ import Testing
         #expect(tracker.unlockedStageSelections.map(\.id) == ["1-1-1", "1-1-2"])
     }
 
+    @Test func advanceUsesRuntimeClearTargetReductionWithoutMutatingSourceTarget() {
+        var tracker = ProgressTracker()
+        for _ in 0..<(ProgressTracker.killsToAdvance - RuneTree.stageClearTargetReductionBonus) {
+            tracker.advance(clearTargetReduction: RuneTree.stageClearTargetReductionBonus)
+        }
+
+        #expect(tracker.currentStage.displayCode == "1-2")
+        #expect(tracker.killsInChapter == 0)
+        #expect(tracker.stageProgressText(clearTargetReduction: RuneTree.stageClearTargetReductionBonus) == "0/21")
+        #expect(StageDefinition.stage(act: .forest, number: 1).clearTarget(for: .normal) == ProgressTracker.killsToAdvance)
+    }
+
     @Test func selectUnlockedStagePreservesHighWaterProgress() {
         var tracker = ProgressTracker()
         for _ in 0..<ProgressTracker.killsToAdvance {
@@ -179,6 +191,23 @@ import Testing
         #expect(highLevelNightmareChest.soulStoneDrop == .nightmare)
     }
 
+    @Test func chestDropChanceBonusesAddSourceFamilyChests() {
+        let stage = StageDefinition.stage(act: .forest, number: 1)
+        let missed = stage.chestRewards(
+            for: .normal,
+            chestDropBonuses: ChestDropBonuses(normalMonsterChance: 0.10, stageBossChance: 0.10),
+            roll: { 0.99 }
+        )
+        let hit = stage.chestRewards(
+            for: .normal,
+            chestDropBonuses: ChestDropBonuses(normalMonsterChance: 1.10, stageBossChance: 1.10),
+            roll: { 0.05 }
+        )
+
+        #expect(missed.map(\.family) == [.normalMonster, .stageBoss])
+        #expect(hit.map(\.family) == [.normalMonster, .stageBoss, .normalMonster, .normalMonster, .stageBoss, .stageBoss])
+    }
+
     @Test func bossRequiresSoulStoneAndConsumesItOnClear() {
         var tracker = ProgressTracker()
         tracker.currentStageIndex = 9
@@ -329,6 +358,8 @@ import Testing
         #expect(monster.id == "assassin_goblin")
         #expect(GameArt.battleMonsterSpriteName(for: monster.id) == "stage_monster_assassin_goblin")
         #expect(monster.hp == 470)
+        #expect(monster.atk == 10)
+        #expect(monster.spd == 11)
         #expect(monster.goldReward == 140)
         #expect(monster.xpReward == 155)
         #expect(monster.itemLevelCap == 1)
@@ -340,7 +371,11 @@ import Testing
         let firstStageFinalState = StageDefinition.stage(act: .forest, number: 1).encounterState(for: .normal, encounterIndex: 9)
         #expect(firstStageSecondEncounter.name == "史莱姆")
         #expect(GameArt.battleMonsterSpriteName(for: firstStageSecondEncounter.id) == "official_monster_slime")
+        #expect(firstStageSecondEncounter.atk == 10)
+        #expect(firstStageSecondEncounter.spd == 4)
         #expect(firstStageSeventhEncounter.name == "哥布林")
+        #expect(firstStageSeventhEncounter.atk == 15)
+        #expect(firstStageSeventhEncounter.spd == 5)
         #expect(firstStageOverflowEncounter.name == "哥布林")
         #expect(firstStageOpeningState.wave == 1)
         #expect(firstStageOpeningState.waveCount == 10)
@@ -369,6 +404,8 @@ import Testing
         #expect(boss.name == "执政官莫尔卡")
         #expect(GameArt.battleMonsterSpriteName(for: boss.id) == "stage_monster_voidcaller")
         #expect(boss.hp == 3550)
+        #expect(boss.atk == 6_177)
+        #expect(boss.spd == 15)
         #expect(boss.goldReward == 198_300)
     }
 

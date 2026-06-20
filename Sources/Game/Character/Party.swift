@@ -15,11 +15,15 @@ struct PartyMember: Codable, Identifiable, Equatable, Hashable {
         slotIndex == 0
     }
 
-    func supportAttackPower(heroLevel: Int) -> Int {
+    func supportAttackPower(
+        heroLevel: Int,
+        allHeroAttackDamageBonus: Int = 0,
+        allHeroAttackDamageMultiplier: Double = 1.0
+    ) -> Int {
         guard isUnlocked, !isPrimary else { return 0 }
         let levelBonus = max(heroLevel - 1, 0) * 2
-        let rawAttack = heroClass.baseStats.atk + levelBonus
-        return max(1, Int((Double(rawAttack) * 0.35).rounded()))
+        let rawAttack = heroClass.baseStats.atk + levelBonus + max(0, allHeroAttackDamageBonus)
+        return max(1, Int((Double(rawAttack) * max(0.1, allHeroAttackDamageMultiplier) * 0.35).rounded()))
     }
 
     func supportMaxHP(heroLevel: Int) -> Int {
@@ -27,9 +31,19 @@ struct PartyMember: Codable, Identifiable, Equatable, Hashable {
         return max(1, heroClass.baseStats.hp + max(heroLevel - 1, 0) * 10)
     }
 
-    func supportDefense(heroLevel: Int) -> Int {
+    func supportDefense(
+        heroLevel: Int,
+        allHeroArmorBonus: Int = 0,
+        allHeroArmorMultiplier: Double = 1.0
+    ) -> Int {
         guard isUnlocked, !isPrimary else { return 0 }
-        return max(0, heroClass.baseStats.def + max(heroLevel - 1, 0))
+        let rawDefense = heroClass.baseStats.def + max(heroLevel - 1, 0) + max(0, allHeroArmorBonus)
+        return max(0, Int(ceil(Double(rawDefense) * max(0.1, allHeroArmorMultiplier))))
+    }
+
+    func supportSpeed(allHeroMoveSpeedBonus: Int = 0) -> Int {
+        guard isUnlocked, !isPrimary else { return 0 }
+        return max(1, heroClass.baseStats.spd + max(0, allHeroMoveSpeedBonus))
     }
 }
 
@@ -64,9 +78,17 @@ struct HeroParty: Codable, Equatable {
         normalizedMembers.first { $0.slotIndex == slotIndex }
     }
 
-    func supportAttackPower(heroLevel: Int) -> Int {
+    func supportAttackPower(
+        heroLevel: Int,
+        allHeroAttackDamageBonus: Int = 0,
+        allHeroAttackDamageMultiplier: Double = 1.0
+    ) -> Int {
         supportMembers.reduce(0) { total, member in
-            total + member.supportAttackPower(heroLevel: heroLevel)
+            total + member.supportAttackPower(
+                heroLevel: heroLevel,
+                allHeroAttackDamageBonus: allHeroAttackDamageBonus,
+                allHeroAttackDamageMultiplier: allHeroAttackDamageMultiplier
+            )
         }
     }
 

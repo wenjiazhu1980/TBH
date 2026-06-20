@@ -12,6 +12,7 @@ struct SaveData: Codable {
     let inventory: Inventory
     let progress: ProgressTracker
     let statistics: GameStatistics
+    let autoOpenChestCooldowns: AutoOpenChestCooldowns
     let autoEquipBestItems: Bool
     let worseEquipmentHandling: WorseEquipmentHandling
     let soundEffectsEnabled: Bool
@@ -28,6 +29,7 @@ struct SaveData: Codable {
         inventory: Inventory,
         progress: ProgressTracker,
         statistics: GameStatistics,
+        autoOpenChestCooldowns: AutoOpenChestCooldowns = AutoOpenChestCooldowns(),
         autoEquipBestItems: Bool = false,
         worseEquipmentHandling: WorseEquipmentHandling = .keep,
         soundEffectsEnabled: Bool = true,
@@ -53,6 +55,7 @@ struct SaveData: Codable {
         self.inventory = inventory
         self.progress = progress
         self.statistics = statistics
+        self.autoOpenChestCooldowns = autoOpenChestCooldowns
         self.autoEquipBestItems = autoEquipBestItems
         self.worseEquipmentHandling = worseEquipmentHandling
         self.soundEffectsEnabled = soundEffectsEnabled
@@ -61,7 +64,7 @@ struct SaveData: Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case hero, party, runeTree, cubeProgress, purchasedInventoryExpansionCount, activeSkillLoadouts, inventory, progress, statistics, autoEquipBestItems, worseEquipmentHandling, soundEffectsEnabled, unyieldingWillConsumedStageKey, timestamp
+        case hero, party, runeTree, cubeProgress, purchasedInventoryExpansionCount, activeSkillLoadouts, inventory, progress, statistics, autoOpenChestCooldowns, autoEquipBestItems, worseEquipmentHandling, soundEffectsEnabled, unyieldingWillConsumedStageKey, timestamp
     }
 
     init(from decoder: Decoder) throws {
@@ -88,6 +91,7 @@ struct SaveData: Codable {
         ))
         progress = try c.decode(ProgressTracker.self, forKey: .progress)
         statistics = try c.decode(GameStatistics.self, forKey: .statistics)
+        autoOpenChestCooldowns = try c.decodeIfPresent(AutoOpenChestCooldowns.self, forKey: .autoOpenChestCooldowns) ?? AutoOpenChestCooldowns()
         autoEquipBestItems = try c.decodeIfPresent(Bool.self, forKey: .autoEquipBestItems) ?? false
         worseEquipmentHandling = try c.decodeIfPresent(WorseEquipmentHandling.self, forKey: .worseEquipmentHandling) ?? .keep
         soundEffectsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? true

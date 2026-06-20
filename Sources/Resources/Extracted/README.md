@@ -115,13 +115,13 @@
 | Bracer | item_3_4 | `/assets/tbhdb/game/gear/bracer/BRACER_630001.png` |
 
 装备图标资源的打包契约：
-- `GameArt.itemIconName(for item:)` 必须优先使用 `Item.equipmentType + itemLevel` 选择 `SourceItemCatalog` 中最近的官方基础等级进度图标，即 `source_gear_<ID>`；只有缺少来源进度时才回退到对应 `item_*` 类型图标，未知非装备才回退到 `official_item_*` 通用图标
+- `GameArt.itemIconName(for item:)` 必须优先使用 `Item.sourceGearID` 指向的 `SourceItemCatalog` 官方基础等级进度图标，即 `source_gear_<ID>`；缺少结构化来源 ID 时再使用 `Item.equipmentType + itemLevel` 选择最近进度图标，只有缺少来源进度时才回退到对应 `item_*` 类型图标，未知非装备才回退到 `official_item_*` 通用图标
 - `source_gear_icons.tsv` 固定记录 396 个来源页基础等级图标的 `iconName`、类型、itemLevel、sourceID、名称、官方 URL、SHA-256 和字节数；审计以这份清单为官方来源契约，不允许本地重绘图标通过检查
 - 20 个 `EquipmentType` 必须一一映射到独立的来源页 `item_*` 资源，避免退化成少数槽位级通用图标或本地重绘占位图
 - `official_item_*` 通用兜底图标也必须是透明独立图标；`official_item_box` 不得使用含相邻格、边框或背景块的旧背包 UI 裁片
 - `ResourceSelfTest` 会验证这些运行时装备图标能从打包资源加载，并保持来源页尺寸 `16x16`、RGBA/alpha 通道和合理可见像素占比
 - `scripts/audit-local-item-icons.sh` 会从 Swift 源码解析 `EquipmentType` 与 `GameArt.itemIconName(for:)` 映射，并独立检查 20 张 `item_*` 图标的一一对应、来源 URL、`16x16` 尺寸、固定 SHA-256 载荷、可见像素占比、可见像素连通性和重复像素载荷；同时按 `source_gear_icons.tsv` 检查 396 张 `source_gear_*` 图标的官方 URL、SHA-256、字节数、尺寸、可见像素范围和重复载荷，避免整块背包 UI 裁片、相邻装备碎片或本地重绘占位图混入运行时图标；如果本机存在 `~/Library/Application Support/TBH/save.json`，脚本还会读取真实背包和已装备物品，确认当前存档里的装备最终解析到存在的 `source_gear_*` 或 `item_*` 来源页资源；如果 `dist/TBH.app` 已存在，脚本还会复查 app 包内图标并比对源码载荷，避免实际运行包残留旧裁片或旧自绘图标
-- 掉落装备名称和合成预览使用 `SourceItemCatalog` 中对应装备类型和 itemLevel 的最近来源基础等级进度，例如 Lv.12 Scepter 显示为来源 Lv.10 `Blessed Scepter` 并在描述中保留来源装备 ID `330003`
+- 掉落装备名称、结构化 `sourceGearID` 和合成预览使用 `SourceItemCatalog` 中对应装备类型和 itemLevel 的最近来源基础等级进度，例如 Lv.12 Scepter 显示为来源 Lv.10 `Blessed Scepter`，写入 `sourceGearID = 330003`，并为旧存档继续从描述中的 `来源装备 330003` 迁移来源身份
 - 这仍是 396 个基础等级图标和基础等级名映射，不等同于原版 5,760 件物品的完整逐件图标库、逐稀有度/词缀名称、逐变体图标或完整原版 stat roll
 
 ### 来源页材料与关卡宝箱图标
@@ -164,19 +164,20 @@
 - `GameArt.passiveSkillIconNames` 必须覆盖当前源页暴露的 27 个唯一被动图标族
 - 每个 `source_passive_*` 图标都必须能从打包资源加载，并保持当前源页尺寸（`16x16` 或 `32x32`）
 - `ResourceSelfTest` 和 `scripts/audit-local-passive-skill-icons.sh` 会检查 104/108 映射、27 个图标族、当前源页缺图 stat、源尺寸、透明通道与非预期重复像素；如果 `dist/TBH.app` 已存在，脚本还会复查 app 包内 `source_passive_*` 图标并比对源码载荷，避免实际运行包残留旧被动技能图标
+- 需要重新核对实时源页时，可运行 `AUDIT_REMOTE_PASSIVE_SKILL_SOURCE=1 scripts/audit-local-passive-skill-icons.sh`；该模式会读取 `https://taskbarhero.org/en/skills/` 与 `https://taskbarhero.org/zh/skills/`，确认 108 行被动、104 行 `db-icon`、27 个图标族、`IncreaseProjectileDamage` / `SkillHealIncrease` 缺图，以及两个候选 PNG URL 仍为 `404`
 
 ### 符文树节点图标（39 个源图标族）
 | 文件名 | 格式 | 说明 |
 |--------|------|------|
 | source_rune_*.png | 16x16 RGBA | 从 `taskbarhero.org/zh/runes/` 暴露的 `/assets/tbhdb/game/runes/<IconFamily>.png` 路径下载 |
 
-当前 `SourceRuneCatalog` 以数据形式保留了完整原版 Rune Tree 的 197 个节点、195 条 `Next` 连线、11 条稀疏 `Previous` 引用及其精确映射、39 个图标族、图标族分布、`MaxLevel` 分布 `1:62, 2:1, 3:43, 5:89, 10:2`，以及 `Next` 出度分布 `0:79, 1:63, 2:35, 3:18, 4:2`。`source_rune_*` 现在覆盖这 39 个图标族；当前代码建模 15 个可执行符文节点，这些节点的设置页图标会从对应源节点的图标族自动派生：`UnlockArrangeSlotCount`、`UnlockSkillSlotCount`、`MaxInventorySlot`、`OpenOneTypeChestAllAtOnce`、`OpenAllTypeChestAllAtOnce`、`UnlockAutoOpenNormalChest`、`UnlockAutoOpenStageBossChest`、`UnlockAutoOpenActBossChest`、`MaxAmountNormalChest`、`MaxAmountStageBossChest`、`MaxAmountActBossChest`、`UnlockOfflineReward`、`OfflineRewardGoldPercent`、`OfflineRewardExpPercent`。旧的 `rune_*` 截图裁片仍留在资源目录作为历史参考，不再作为当前建模符文的首选映射依据。
+当前 `SourceRuneCatalog` 以数据形式保留了完整原版 Rune Tree 的 197 个节点、195 条 `Next` 连线、11 条稀疏 `Previous` 引用及其精确映射、39 个图标族、图标族分布、`MaxLevel` 分布 `1:62, 2:1, 3:43, 5:89, 10:2`，以及 `Next` 出度分布 `0:79, 1:63, 2:35, 3:18, 4:2`。`source_rune_*` 现在覆盖这 39 个图标族；当前代码建模 197 个可执行符文节点，这些节点的设置页图标会从对应源节点的图标族自动派生。旧的 `rune_*` 截图裁片仍留在资源目录作为历史参考，不再作为当前建模符文的首选映射依据。宝箱掉落率、奖励倍率等仍是本地保守运行时脚手架；自动开箱已按已核对冷却表接入运行时，设置页另列 `tbh.city` 单源完整 `total_cost_to_max` 候选表（197/197，10,040,515,050G）以及自动开箱 13 节点候选成本桶，但完整可验证成本、路径、重置经济和点数规则仍不声明为原版精确公式。
 
-`扩张符文：背包容量 +10` 已接入运行时背包容量；两个 `开启符文` 已接入同类箱子批量开启和全部箱子一键开启；三个 `发条符文` 已分别接入 Normal Monster Box、Stage Boss Box 和 Act Boss Box 家族自动开启；`收纳符文` / `MaxAmountNormalChest`、`金库符文` / `MaxAmountStageBossChest`、`无限符文` / `MaxAmountActBossChest` 已接入对应箱子家族的本地容量上限，并按保守脚手架各增加 `+1`。这些箱子容量符文只证明来源页存在对应容量图标族和节点类别；精确成本、路径、叠加规则、真实容量增量、自动开启计时和完整原版路径仍按未核对处理。精确逐节点坐标、成本、效果、自动开启计时和扩容数值仍需要更完整的授权资源或逐节点截图。
+二十六个 `扩张符文` / `MaxInventorySlot` 已接入运行时背包容量，并按保守脚手架每个运行时节点增加 `+10`；七个 `财富符文` / `IncreaseGoldAmount` 和七个 `成长符文` / `IncreaseExpAmount` 已接入战斗金币/经验倍率，并按保守脚手架每个运行时节点增加 `+10%`；十五个 `AdditionalGold*` 与十四个 `AdditionalExp*` 来源节点已按 Normal Monster、Stage Boss、Act Boss 和通用战斗奖励类别接入，并按保守脚手架每个匹配节点增加 `+10%`；四个 `组合符文` / `CubeExpPercent` 和四个 `炼金符文` / `CubeAlchemyGoldPercent` 已接入魔方经验/炼金金币倍率，并按保守脚手架每个运行时节点增加 `+10%`；五个 `储藏符文` / `OfflineRewardGoldPercent` 和五个 `训练符文` / `OfflineRewardExpPercent` 已接入离线金币/经验倍率，并按保守脚手架每个运行时节点增加 `+10%`；两个 `开启符文` 已接入同类箱子批量开启和全部箱子一键开启；三个 `发条符文` 已分别接入 Normal Monster Box、Stage Boss Box 和 Act Boss Box 家族自动开启冷却，基础冷却为 `300s`、`600s`、`60s`，对应 `润滑符文` 冷却缩短总量为 `39s`、`75s`、`6s`；相关 `tbh.city` 单源页面另提供完整 `total_cost_to_max` 候选表（197 节点合计 `10,040,515,050G`）以及 13 个自动开箱/润滑符文候选成本，自动开箱子集合计 `383,790,000G`，当前只拆成 `10k`、`200k`、`1M`、`382.58M` 润滑合计这 4 个复核队列桶，不绑定精确 Rune ID，也不参与本地扣费、退款或已核对成本统计；十五个 `收纳符文` / `MaxAmountNormalChest`、十三个 `金库符文` / `MaxAmountStageBossChest`、十个 `无限符文` / `MaxAmountActBossChest` 已接入对应箱子家族的本地容量上限，并按保守脚手架每个运行时节点增加 `+1`。战斗和离线经验倍率只参与原始奖励计算，最终显示和统计的 XP 还会经过本地 `GamePacing` 慢速节奏与等级上限结算，因此这些数值不能视为原版精确升级公式。上述符文只证明来源页存在对应图标族和节点类别；精确可验证成本、路径、叠加规则、真实容量增量、完整自动开启分支和完整原版路径仍按未核对处理。精确逐节点坐标、成本、效果和扩容数值仍需要更完整的授权资源或逐节点截图。
 
 符文树图标资源的打包契约：
 - `GameArt.runeTreeIconName(for:)` 必须让所有当前 `RuneTreeNode` 都解析到 `source_rune_*` 资源
-- 当前 15 个节点必须保留 14 个不同源图标族，其中第 2/3 编队位共用 `source_rune_UnlockArrangeSlotCount`
+- 当前 197 个运行时节点必须保留 39 个不同源图标族，其中多个同类效果节点会复用同一个 `source_rune_*` 源图标族
 - `GameArt.runeTreeIconNames` 必须覆盖 `SourceRuneCatalog` 当前记录的 39 个图标族
 - 每个 `source_rune_*` 图标都必须能从打包资源加载，并保持当前源页尺寸 `16x16`
 - `ResourceSelfTest` 和 `scripts/audit-local-rune-icons.sh` 会检查这些图标的尺寸、源图标族覆盖、当前运行态节点映射、色彩复杂度和非预期重复像素，避免背景纹理块或旧截图裁片混入设置页符文树 UI；如果 `dist/TBH.app` 已存在，脚本还会复查 app 包内 39 个 `source_rune_*` 图标并比对源码载荷，避免实际运行包残留旧符文图标
@@ -232,6 +233,7 @@
 - 覆盖：`ResourceSelfTest` 从 `GameAudioEvent` 自动派生必需清单，并验证每个事件音效可由 `NSSound` 播放、可由 `AVAudioFile` 解析、符合 mono / 22050 Hz / 时长 / RMS / 峰值约束
 - 发布包：`scripts/audit-local-sfx.sh` 会验证源码 `sfx/` 目录和 `dist/TBH.app` 包内 `Extracted/sfx` 的 WAV 载荷及 `sfx_manifest.tsv` 一致，避免实际运行包残留旧音效、缺失新事件音效或丢失替代音来源声明
 - 运行时：`SelfTest` 断言 `BattleEvent` 到 `GameAudioEvent` 的路由，并用注入式录音音频对象验证预览、装备、Cube 注入、炼金、开箱、合成、离线升级、静音抑制和重新开启音效行为
+- 复核界面：设置页 `原版音频/SFX 证据` 分区把 Steam Trailer 的广义音频基线与本地 11 个 `generated_substitute` WAV 清单分开展示；`scripts/audit-local-gameplay-fidelity.sh` 固定 `source_audio_sfx_*` 指标，并保持已隔离原版单事件 SFX 为 `0`
 
 战斗页英雄资源的打包契约：
 - 文件名必须通过 `GameArt.battleHeroSpriteName(for:)` 映射到对应职业的 `battle_hero_*`，例如骑士只能映射到 `battle_hero_knight`

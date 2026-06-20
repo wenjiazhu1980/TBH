@@ -7,8 +7,8 @@ struct BattleView: View {
     var body: some View {
         Group {
             if let battle = gameEngine.currentBattle {
-                VStack(spacing: 10) {
-                    StageHeaderView(progress: gameEngine.progress, battle: battle)
+                VStack(spacing: BattlePanelMetrics.sectionSpacing) {
+                    let battleLogPresentation = BattleLogPresentation(from: gameEngine.recentBattleLog)
 
                     // 战斗场景 — 像素精灵
                     BattleSceneView(
@@ -17,29 +17,47 @@ struct BattleView: View {
                         latestLogEntry: gameEngine.recentBattleLog.last,
                         logTrigger: gameEngine.recentBattleLog.last?.id
                     )
+                        .frame(maxWidth: .infinity)
                         .frame(height: BattleSceneMetrics.compactHeight)
-
-                    if battle.isOver {
-                        BattleResultBanner(result: battle.result)
-                    } else {
-                        BattleOngoingStatusView(battle: battle)
-                    }
-
-                    BattleLogPanel(
-                        entries: Array(gameEngine.recentBattleLog
-                            .filter { entry in
-                                switch entry.attacker {
-                                case .hero, .monster:
-                                    return true
-                                case .support:
-                                    return false
+                        .overlay(alignment: .top) {
+                            StageHeaderView(
+                                progress: gameEngine.progress,
+                                battle: battle,
+                                clearTargetReduction: gameEngine.runeTree.stageClearTargetReduction
+                            )
+                            .padding(.horizontal, 8)
+                            .padding(.top, 8)
+                        }
+                        .overlay(alignment: .bottom) {
+                            Group {
+                                if battle.isOver {
+                                    BattleResultBanner(
+                                        result: battle.result,
+                                        displayedVictoryRewards: displayedVictoryRewards(for: battle.result),
+                                        levelCapStatus: HeroLevelPacing.levelCapStatus(
+                                            for: gameEngine.hero,
+                                            progress: gameEngine.progress
+                                        )
+                                    )
+                                } else {
+                                    BattleOngoingStatusView(battle: battle)
                                 }
                             }
-                            .suffix(BattleLogMetrics.visibleEntryLimit)),
-                        totalCount: gameEngine.recentBattleLog.count
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 8)
+                        }
+                        .layoutPriority(2)
+
+                    BattleLogPanel(
+                        entries: battleLogPresentation.visibleEntries,
+                        heroFocusEntries: battleLogPresentation.heroFocusEntries,
+                        totalCount: battleLogPresentation.totalCount
                     )
+                    .layoutPriority(1)
                 }
-                .padding()
+                .padding(.horizontal, BattlePanelMetrics.horizontalPadding)
+                .padding(.vertical, BattlePanelMetrics.verticalPadding)
+                .frame(maxHeight: .infinity, alignment: .top)
             } else {
                 VStack {
                     if gameEngine.progress.isAwaitingNewGamePlus {
@@ -78,9 +96,20 @@ struct BattleView: View {
             }
         }
     }
+
+    private func displayedVictoryRewards(for result: BattleResult?) -> BattleResult.Rewards? {
+        guard case .victory(let rewards) = result else { return nil }
+        return gameEngine.previewVictoryRewards(rewards)
+    }
 }
 
-private struct CompletionSettlementView: View {
+enum BattlePanelMetrics {
+    static let sectionSpacing: CGFloat = 5
+    static let horizontalPadding: CGFloat = 12
+    static let verticalPadding: CGFloat = 6
+}
+
+struct CompletionSettlementView: View {
     let progress: ProgressTracker
     let statistics: GameStatistics
     let onDeferNewGamePlus: () -> Void
@@ -583,12 +612,13 @@ private struct PlayerBattleStatusBadgeView: View {
     }
 }
 
-private struct StageHeaderView: View {
+struct StageHeaderView: View {
     let progress: ProgressTracker
     @ObservedObject var battle: Battle
+    let clearTargetReduction: Int
 
     var body: some View {
-        let encounter = progress.currentEncounterState
+        let encounter = progress.currentEncounterState(clearTargetReduction: clearTargetReduction)
         let waveProgress = battle.monsterCount > 1
             ? "\(battle.currentMonsterNumber)/\(battle.monsterCount)"
             : "\(encounter.waveEncounterNumber)/\(encounter.waveEncounterTarget)"
@@ -597,10 +627,11 @@ private struct StageHeaderView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(progress.currentStage.displayName)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.94))
                     .lineLimit(1)
                 Text("\(progress.playthroughText) · \(progress.currentChapter.name) · \(progress.currentDifficulty.name) · 波 \(encounter.wave)/\(encounter.waveCount) · \(waveProgress) · \(battle.monster.name)")
                     .font(.system(size: 8, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.white.opacity(0.72))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
@@ -613,11 +644,15 @@ private struct StageHeaderView: View {
                     .foregroundColor(.orange)
             }
 
-            Text(progress.stageProgressText)
+            Text(progress.stageProgressText(clearTargetReduction: clearTargetReduction))
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundColor(.secondary)
+                .foregroundColor(.white.opacity(0.72))
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.50))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }
 
@@ -693,6 +728,8 @@ enum BattleIncomingCue: String, CaseIterable {
 
 enum BattleImpactCue: String, CaseIterable {
     case physicalSlash
+    case axeSpinImpact
+    case bleedRendImpact
     case shockwaveImpact
     case earthquakeImpact
     case earthquakeRockExplosion
@@ -750,6 +787,9 @@ enum BattleImpactCue: String, CaseIterable {
 
     private static func skillSpecificCue(for skillName: String?) -> BattleImpactCue? {
         guard let skillName else { return nil }
+        if skillName == "旋转斧流血追击" {
+            return .bleedRendImpact
+        }
         if skillName == "粉碎强击冲击波" {
             return .shockwaveImpact
         }
@@ -761,6 +801,8 @@ enum BattleImpactCue: String, CaseIterable {
         }
         guard let skill = HeroSkills.skill(forLogSkillName: skillName) else { return nil }
         switch skill.id {
+        case "60501":
+            return .axeSpinImpact
         case "50101":
             return .explosiveBoltImpact
         case "50201":
@@ -780,6 +822,10 @@ enum BattleImpactCue: String, CaseIterable {
         switch self {
         case .physicalSlash:
             return Color(red: 0.90, green: 0.94, blue: 0.96)
+        case .axeSpinImpact:
+            return Color(red: 0.96, green: 0.74, blue: 0.38)
+        case .bleedRendImpact:
+            return Color(red: 0.96, green: 0.14, blue: 0.12)
         case .shockwaveImpact:
             return Color(red: 0.84, green: 0.90, blue: 0.96)
         case .earthquakeImpact:
@@ -815,6 +861,10 @@ enum BattleImpactCue: String, CaseIterable {
         switch self {
         case .physicalSlash:
             return Color(red: 0.42, green: 0.50, blue: 0.56)
+        case .axeSpinImpact:
+            return Color(red: 0.48, green: 0.30, blue: 0.16)
+        case .bleedRendImpact:
+            return Color(red: 0.42, green: 0.02, blue: 0.04)
         case .shockwaveImpact:
             return Color(red: 0.36, green: 0.44, blue: 0.52)
         case .earthquakeImpact:
@@ -850,6 +900,10 @@ enum BattleImpactCue: String, CaseIterable {
         switch self {
         case .physicalSlash:
             return "物理命中"
+        case .axeSpinImpact:
+            return "旋转斧命中"
+        case .bleedRendImpact:
+            return "流血追击"
         case .shockwaveImpact:
             return "冲击波命中"
         case .earthquakeImpact:
@@ -883,6 +937,7 @@ enum BattleImpactCue: String, CaseIterable {
 }
 
 enum BattleTrajectoryCue: String, CaseIterable {
+    case meleeArc
     case projectile
     case rapidVolley
     case trackingVolley
@@ -899,6 +954,8 @@ enum BattleTrajectoryCue: String, CaseIterable {
     case chargeDash
     case leapArc
     case meteorFall
+    case axeSpinArc
+    case bleedRendTrail
     case shockwaveRing
     case groundRupture
     case rockBurst
@@ -912,6 +969,8 @@ enum BattleTrajectoryCue: String, CaseIterable {
         }
 
         switch entry.delivery {
+        case .melee, .meleeAOE:
+            return .meleeArc
         case .projectile, .projectileAOE:
             return .projectile
         case .range, .rangeAOE:
@@ -920,13 +979,16 @@ enum BattleTrajectoryCue: String, CaseIterable {
             return .summonProjectile
         case .trap:
             return .trapArc
-        case .melee, .meleeAOE, .buff, .heal, .resurrection, .none:
+        case .buff, .heal, .resurrection, .none:
             return nil
         }
     }
 
     private static func skillSpecificCue(for skillName: String?) -> BattleTrajectoryCue? {
         guard let skillName else { return nil }
+        if skillName == "旋转斧流血追击" {
+            return .bleedRendTrail
+        }
         if skillName == "粉碎强击冲击波" {
             return .shockwaveRing
         }
@@ -962,6 +1024,8 @@ enum BattleTrajectoryCue: String, CaseIterable {
             return .meteorFall
         case "60401":
             return .groundRupture
+        case "60501":
+            return .axeSpinArc
         default:
             return nil
         }
@@ -969,6 +1033,8 @@ enum BattleTrajectoryCue: String, CaseIterable {
 
     var tint: Color {
         switch self {
+        case .meleeArc:
+            return Color(red: 0.92, green: 0.96, blue: 1.0)
         case .projectile:
             return Color(red: 0.40, green: 0.92, blue: 1.0)
         case .rapidVolley:
@@ -1001,6 +1067,10 @@ enum BattleTrajectoryCue: String, CaseIterable {
             return Color(red: 0.96, green: 0.86, blue: 0.58)
         case .meteorFall:
             return Color(red: 1.0, green: 0.52, blue: 0.14)
+        case .axeSpinArc:
+            return Color(red: 0.96, green: 0.74, blue: 0.38)
+        case .bleedRendTrail:
+            return Color(red: 0.96, green: 0.14, blue: 0.12)
         case .shockwaveRing:
             return Color(red: 0.84, green: 0.90, blue: 0.96)
         case .groundRupture:
@@ -1027,6 +1097,8 @@ enum BattleTrajectoryCue: String, CaseIterable {
 
     var accessibilityLabel: String {
         switch self {
+        case .meleeArc:
+            return "近战弧光轨迹"
         case .projectile:
             return "投射物轨迹"
         case .rapidVolley:
@@ -1059,6 +1131,10 @@ enum BattleTrajectoryCue: String, CaseIterable {
             return "跃击轨迹"
         case .meteorFall:
             return "陨石下落轨迹"
+        case .axeSpinArc:
+            return "旋转斧轨迹"
+        case .bleedRendTrail:
+            return "流血追击轨迹"
         case .shockwaveRing:
             return "冲击波轨迹"
         case .groundRupture:
@@ -1074,6 +1150,7 @@ enum BattleUtilityCue: String, CaseIterable {
     case sanctuaryPulse
     case resurrectionRise
     case shieldField
+    case wrathOfHeavenStorm
     case sacredBladeGlow
     case swiftSurgeHaste
     case quickLoaderHaste
@@ -1092,6 +1169,8 @@ enum BattleUtilityCue: String, CaseIterable {
         switch skill.id {
         case "10401":
             return .shieldField
+        case "40301":
+            return .wrathOfHeavenStorm
         case "10501":
             return .sacredBladeGlow
         case "20401":
@@ -1114,7 +1193,7 @@ enum BattleUtilityCue: String, CaseIterable {
                 return .healPulse
             case .buff:
                 return .buffAura
-            case .damage:
+            case .damage, .dodge, .block:
                 return nil
             }
         }
@@ -1130,6 +1209,8 @@ enum BattleUtilityCue: String, CaseIterable {
             return Color(red: 1.0, green: 0.92, blue: 0.32)
         case .shieldField:
             return Color(red: 0.42, green: 0.82, blue: 1.0)
+        case .wrathOfHeavenStorm:
+            return Color(red: 1.0, green: 0.88, blue: 0.24)
         case .sacredBladeGlow:
             return Color(red: 1.0, green: 0.84, blue: 0.24)
         case .swiftSurgeHaste:
@@ -1155,6 +1236,8 @@ enum BattleUtilityCue: String, CaseIterable {
             return "复活反馈"
         case .shieldField:
             return "护盾反馈"
+        case .wrathOfHeavenStorm:
+            return "天堂之怒反馈"
         case .sacredBladeGlow:
             return "神圣之刃反馈"
         case .swiftSurgeHaste:
@@ -1174,13 +1257,24 @@ enum BattleUtilityCue: String, CaseIterable {
 enum BattleSceneMetrics {
     static let officialWidth: CGFloat = 776
     static let officialHeight: CGFloat = 180
-    static let expectedPopoverContentWidth: CGFloat = 398
-    static let compactHeight: CGFloat = 92
-    static let groundHeightRatio: CGFloat = 0.263
+    static let expectedPopoverContentWidth: CGFloat = 616
+    static let compactHeight: CGFloat = 300
+    static let maximumVisualScaleHeight: CGFloat = 300
+    static let referenceCompactHeight: CGFloat = 92
+    static let groundHeightRatio: CGFloat = 0.14
     static let groundPlatformWidthRatio: CGFloat = 0.90
+    static let partyPlatformXRatio: CGFloat = 0.50
+    static let enemyPlatformXRatio: CGFloat = 0.80
+    static let combatantBaselineRatio: CGFloat = 0.92
     static let flameColumnCount = 28
     static let flameAnimationFrameRate: Double = 12
     static let combatAnimationFrameRate: Double = 12
+    static let actionFrameHoldDuration: TimeInterval = 0.30
+    static let strikeLungeDistance: CGFloat = 10
+    static let hitSquashYScale: CGFloat = 0.92
+    static let supportHPBarWidth: CGFloat = 32
+    static let finishCueWidth: CGFloat = 82
+    static let finishCueHeight: CGFloat = 46
     static let sceneCornerRadius: CGFloat = 0
     static let sceneBorderLineWidth: CGFloat = 0
 
@@ -1192,6 +1286,41 @@ enum BattleSceneMetrics {
         expectedPopoverContentWidth / compactHeight
     }
 
+    static var visualScale: CGFloat {
+        min(compactHeight, maximumVisualScaleHeight) / referenceCompactHeight
+    }
+
+    static var combatantFrameHeight: CGFloat {
+        68 * visualScale
+    }
+
+    static var combatantBaselineY: CGFloat {
+        compactHeight * combatantBaselineRatio
+    }
+
+    static var deployableScale: CGFloat {
+        min(max(visualScale, 1.25), 1.75)
+    }
+
+    static var effectScale: CGFloat {
+        min(max(compactHeight / 130, 1.0), 1.90)
+    }
+
+    static var utilityCueScale: CGFloat {
+        min(max(effectScale * 0.72, 1.0), 1.34)
+    }
+
+    static func sourceRangeVisualScale(for sourceRange: Int?) -> CGFloat {
+        guard let sourceRange, sourceRange > 0 else { return 1.0 }
+        let scale = CGFloat(sourceRange) / 900
+        return min(max(scale, 0.84), 1.36)
+    }
+
+    static func sourceRangeVerticalScale(for sourceRange: Int?) -> CGFloat {
+        let horizontalScale = sourceRangeVisualScale(for: sourceRange)
+        return min(max(0.92 + (horizontalScale - 1.0) * 0.25, 0.88), 1.10)
+    }
+
     static var platformSideInsetRatio: CGFloat {
         (1 - groundPlatformWidthRatio) / 2
     }
@@ -1199,8 +1328,84 @@ enum BattleSceneMetrics {
 
 enum BattleLogMetrics {
     static let visibleEntryLimit = 50
-    static let panelHeight: CGFloat = 122
+    static let heroHighlightEntryLimit = 3
+    static let minimumVisibleHeroSideEntries = 8
+    static let heroFocusLookbackEntryCount = 8
+    static let panelHeight: CGFloat = 168
     static let rowSpacing: CGFloat = 3
+}
+
+struct BattleLogPresentation {
+    let visibleEntries: [BattleLogEntry]
+    let heroFocusEntries: [BattleLogEntry]
+    let totalCount: Int
+
+    init(from entries: [BattleLogEntry]) {
+        visibleEntries = BattleLogDisplayEntries.visible(
+            from: entries,
+            limit: BattleLogMetrics.visibleEntryLimit
+        )
+        heroFocusEntries = BattleLogDisplayEntries.heroSideHighlights(from: entries)
+        totalCount = entries.count
+    }
+
+    var visibleScrollTargetID: UUID? {
+        BattleLogDisplayEntries.scrollTargetID(in: visibleEntries)
+    }
+}
+
+enum BattleLogDisplayEntries {
+    static func visible(
+        from entries: [BattleLogEntry],
+        limit: Int,
+        minimumHeroSideEntries: Int = BattleLogMetrics.minimumVisibleHeroSideEntries
+    ) -> [BattleLogEntry] {
+        guard limit > 0, !entries.isEmpty else { return [] }
+
+        let requiredHeroEntries = min(max(0, minimumHeroSideEntries), limit)
+        let monsterSoftLimit = max(1, limit - requiredHeroEntries)
+        var selected: [BattleLogEntry] = []
+        var selectedHeroEntries = 0
+        var selectedMonsterEntries = 0
+
+        for entry in entries.reversed() where selected.count < limit {
+            if entry.attacker.isHeroSide {
+                selected.append(entry)
+                selectedHeroEntries += 1
+                continue
+            }
+
+            let remainingSlots = limit - selected.count
+            let remainingRequiredHeroes = max(0, requiredHeroEntries - selectedHeroEntries)
+            if selectedMonsterEntries < monsterSoftLimit || remainingRequiredHeroes < remainingSlots {
+                selected.append(entry)
+                selectedMonsterEntries += 1
+            }
+        }
+
+        if selected.isEmpty {
+            return Array(entries.suffix(limit))
+        }
+
+        return selected.reversed()
+    }
+
+    static func scrollTargetID(in entries: [BattleLogEntry]) -> UUID? {
+        guard let latestEntry = entries.last else { return nil }
+        let latestViewportEntries = entries.suffix(BattleLogMetrics.heroFocusLookbackEntryCount)
+        if latestViewportEntries.contains(where: { $0.attacker.isHeroSide }) {
+            return latestEntry.id
+        }
+        return entries.last(where: { $0.attacker.isHeroSide })?.id ?? latestEntry.id
+    }
+
+    static func heroSideHighlights(
+        from entries: [BattleLogEntry],
+        limit: Int = BattleLogMetrics.heroHighlightEntryLimit
+    ) -> [BattleLogEntry] {
+        guard limit > 0 else { return [] }
+        return Array(entries.filter { $0.attacker.isHeroSide }.suffix(limit))
+    }
 }
 
 enum BattleSceneLabels {
@@ -1210,8 +1415,8 @@ enum BattleSceneLabels {
 }
 
 enum BattleHeroSpriteMetrics {
-    static let mainScale: CGFloat = 1.16
-    static let supportScale: CGFloat = 0.76
+    static let mainScale: CGFloat = 1.16 * BattleSceneMetrics.visualScale
+    static let supportScale: CGFloat = 0.76 * BattleSceneMetrics.visualScale
     static let enemyFacingXScale: CGFloat = -1
 
     static func mainSize(for heroClass: HeroClass) -> CGSize {
@@ -1272,80 +1477,127 @@ struct BattleSceneView: View {
             let sceneWidth = proxy.size.width
             let platformWidth = sceneWidth * BattleSceneMetrics.groundPlatformWidthRatio
             let platformLeading = sceneWidth * BattleSceneMetrics.platformSideInsetRatio
+            let snapshotActionAttacker = fixedBackdropTime == nil ? nil : visualLogEntry?.attacker
 
             ZStack(alignment: .topLeading) {
                 BattleArenaBackdrop(fixedTime: animationTime)
 
                 StagePill(progress: progress)
                     .padding(.top, BattleSceneMetrics.compactHeight * 0.36)
-                    .padding(.leading, platformLeading + 8)
+                    .padding(.leading, platformLeading + 20)
 
                 PartyCombatantView(
                     battle: battle,
-                    isHeroStriking: heroStrike,
-                    isSupportStriking: supportStrike,
-                    isHit: heroHit,
+                    isHeroStriking: heroStrike || snapshotActionAttacker == .hero,
+                    isSupportStriking: supportStrike || snapshotActionAttacker?.isSupport == true,
+                    isHit: heroHit || snapshotActionAttacker == .monster,
                     animationTime: animationTime
                 )
-                .frame(width: 220, height: 68, alignment: .bottom)
+                .frame(width: 220 * BattleSceneMetrics.visualScale, height: BattleSceneMetrics.combatantFrameHeight, alignment: .bottom)
                 .position(
-                    x: platformLeading + platformWidth * 0.39,
-                    y: BattleSceneMetrics.compactHeight - 34
+                    x: platformLeading + platformWidth * BattleSceneMetrics.partyPlatformXRatio,
+                    y: BattleSceneMetrics.combatantBaselineY - BattleSceneMetrics.combatantFrameHeight / 2
                 )
 
                 EnemyWaveView(
                     battle: battle,
                     spriteSize: battleMonsterSpriteSize(for: battle.monster.id),
-                    isStriking: monsterStrike,
-                    isHit: monsterHit,
+                    isStriking: monsterStrike || snapshotActionAttacker == .monster,
+                    isHit: monsterHit || snapshotActionAttacker?.isHeroSide == true,
                     animationTime: animationTime
                 )
-                .frame(width: 104, height: 68, alignment: .bottom)
+                .frame(width: 104 * BattleSceneMetrics.visualScale, height: BattleSceneMetrics.combatantFrameHeight, alignment: .bottom)
                 .position(
-                    x: platformLeading + platformWidth * 0.86,
-                    y: BattleSceneMetrics.compactHeight - 34
+                    x: platformLeading + platformWidth * BattleSceneMetrics.enemyPlatformXRatio,
+                    y: BattleSceneMetrics.combatantBaselineY - BattleSceneMetrics.combatantFrameHeight / 2
                 )
 
+                if let pulse = BattleContactPulse.visible(for: visualLogEntry) {
+                    BattleContactPulseView(pulse: pulse)
+                        .frame(
+                            width: 42 * BattleSceneMetrics.effectScale,
+                            height: 26 * BattleSceneMetrics.effectScale,
+                            alignment: .center
+                        )
+                        .padding(.leading, platformLeading + platformWidth * pulse.xAnchorRatio)
+                        .padding(.top, BattleSceneMetrics.compactHeight * 0.70)
+                        .zIndex(7)
+                }
+
                 PlayerDeployableStack(deployables: PlayerBattleDeployable.visible(for: battle))
-                    .frame(width: 72, height: 24, alignment: .bottomLeading)
+                    .frame(
+                        width: 72 * BattleSceneMetrics.deployableScale,
+                        height: 24 * BattleSceneMetrics.deployableScale,
+                        alignment: .bottomLeading
+                    )
                     .padding(.leading, platformLeading + platformWidth * 0.30)
-                    .padding(.top, 42)
+                    .padding(.top, BattleSceneMetrics.compactHeight * 0.32)
                     .zIndex(4)
 
                 if let cue = BattleIncomingCue.visible(for: visualLogEntry) {
                     BattleIncomingCueView(cue: cue)
-                        .frame(width: 54, height: 32, alignment: .center)
+                        .frame(
+                            width: 54 * BattleSceneMetrics.effectScale,
+                            height: 32 * BattleSceneMetrics.effectScale,
+                            alignment: .center
+                        )
                         .padding(.leading, platformLeading + platformWidth * 0.27)
-                        .padding(.top, 32)
+                        .padding(.top, BattleSceneMetrics.compactHeight * 0.38)
                         .zIndex(6)
                 }
 
                 if let trajectory = BattleTrajectoryCue.visible(for: visualLogEntry),
                    let last = visualLogEntry {
+                    let rangeScale = BattleSceneMetrics.sourceRangeVisualScale(for: last.sourceRange)
                     BattleTrajectoryCueView(
                         cue: trajectory,
-                        tint: BattleTrajectoryCue.tint(for: last)
+                        tint: BattleTrajectoryCue.tint(for: last),
+                        sourceRangeScale: rangeScale
                     )
-                    .frame(width: 66, height: 18, alignment: .center)
-                    .padding(.leading, platformLeading + platformWidth * 0.34)
-                    .padding(.top, 34)
+                    .frame(
+                        width: 86 * BattleSceneMetrics.effectScale * rangeScale,
+                        height: 30 * BattleSceneMetrics.effectScale * BattleSceneMetrics.sourceRangeVerticalScale(for: last.sourceRange),
+                        alignment: .center
+                    )
+                    .padding(.leading, platformLeading + platformWidth * 0.33)
+                    .padding(.top, BattleSceneMetrics.compactHeight * 0.40)
                     .zIndex(5)
                 }
 
                 if let cue = BattleImpactCue.visible(for: visualLogEntry) {
                     BattleImpactCueView(cue: cue)
-                        .frame(width: 48, height: 32, alignment: .center)
-                        .padding(.leading, platformLeading + platformWidth * 0.55)
-                        .padding(.top, 31)
+                        .frame(
+                            width: 62 * BattleSceneMetrics.effectScale,
+                            height: 42 * BattleSceneMetrics.effectScale,
+                            alignment: .center
+                        )
+                        .padding(.leading, platformLeading + platformWidth * 0.54)
+                        .padding(.top, BattleSceneMetrics.compactHeight * 0.40)
                         .zIndex(6)
                 }
 
                 if let cue = BattleUtilityCue.visible(for: visualLogEntry) {
                     BattleUtilityCueView(cue: cue)
-                        .frame(width: 58, height: 38, alignment: .center)
+                        .frame(
+                            width: 58 * BattleSceneMetrics.effectScale,
+                            height: 38 * BattleSceneMetrics.effectScale,
+                            alignment: .center
+                        )
                         .padding(.leading, platformLeading + platformWidth * 0.30)
-                        .padding(.top, 22)
+                        .padding(.top, BattleSceneMetrics.compactHeight * 0.38)
                         .zIndex(6)
+                }
+
+                if let finishCue = BattleFinishCue.visible(for: battle.result) {
+                    BattleFinishCueView(cue: finishCue)
+                        .frame(
+                            width: BattleSceneMetrics.finishCueWidth * BattleSceneMetrics.effectScale,
+                            height: BattleSceneMetrics.finishCueHeight * BattleSceneMetrics.effectScale,
+                            alignment: .center
+                        )
+                        .padding(.leading, platformLeading + platformWidth * finishCue.xAnchorRatio)
+                        .padding(.top, BattleSceneMetrics.compactHeight * finishCue.yAnchorRatio)
+                        .zIndex(8)
                 }
 
                 if let last = visualLogEntry {
@@ -1372,8 +1624,8 @@ struct BattleSceneView: View {
             monsterHit = attacker.isHeroSide
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.62)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + BattleSceneMetrics.actionFrameHoldDuration) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) {
                 heroStrike = false
                 supportStrike = false
                 monsterStrike = false
@@ -1384,25 +1636,280 @@ struct BattleSceneView: View {
     }
 
     private func battleMonsterSpriteSize(for monsterID: String) -> CGSize {
+        let scale = BattleSceneMetrics.visualScale
         if monsterID.hasPrefix("boss_") {
-            return CGSize(width: 64, height: 68)
+            return CGSize(width: 64 * scale, height: 68 * scale)
         }
         switch monsterID {
         case "slime_green", "slime_blue":
-            return CGSize(width: 46, height: 28)
+            return CGSize(width: 46 * scale, height: 28 * scale)
         default:
-            return CGSize(width: 50, height: 60)
+            return CGSize(width: 50 * scale, height: 60 * scale)
         }
+    }
+}
+
+private enum BattleFinishCue {
+    case victory
+    case defeat
+
+    static func visible(for result: BattleResult?) -> BattleFinishCue? {
+        switch result {
+        case .victory:
+            return .victory
+        case .defeat:
+            return .defeat
+        case nil:
+            return nil
+        }
+    }
+
+    var xAnchorRatio: CGFloat {
+        switch self {
+        case .victory:
+            return 0.55
+        case .defeat:
+            return 0.24
+        }
+    }
+
+    var yAnchorRatio: CGFloat {
+        switch self {
+        case .victory:
+            return 0.36
+        case .defeat:
+            return 0.39
+        }
+    }
+}
+
+private struct BattleFinishCueView: View {
+    let cue: BattleFinishCue
+
+    var body: some View {
+        Canvas { context, size in
+            let scale = max(
+                CGFloat(1),
+                min(
+                    size.width / BattleSceneMetrics.finishCueWidth,
+                    size.height / BattleSceneMetrics.finishCueHeight
+                )
+            )
+            let center = CGPoint(x: size.width * 0.50, y: size.height * 0.50)
+
+            switch cue {
+            case .victory:
+                drawVictoryCue(context: context, center: center, scale: scale)
+            case .defeat:
+                drawDefeatCue(context: context, center: center, scale: scale)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func drawVictoryCue(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let rayColor = Color(red: 1.0, green: 0.76, blue: 0.18)
+        let coreColor = Color(red: 1.0, green: 0.93, blue: 0.42)
+
+        for index in 0..<8 {
+            let angle = CGFloat(index) * .pi / 4
+            let length = CGFloat(index.isMultiple(of: 2) ? 28 : 20) * scale
+            let width = CGFloat(index.isMultiple(of: 2) ? 5 : 4) * scale
+            let midpoint = CGPoint(
+                x: center.x + CGFloat(cos(Double(angle))) * length * 0.48,
+                y: center.y + CGFloat(sin(Double(angle))) * length * 0.48
+            )
+            let rayRect = CGRect(
+                x: midpoint.x - width / 2,
+                y: midpoint.y - length / 2,
+                width: width,
+                height: length
+            )
+            let rayPath = Path(roundedRect: rayRect, cornerRadius: 1.5 * scale)
+                .applying(.init(translationX: -midpoint.x, y: -midpoint.y))
+                .applying(.init(rotationAngle: angle + .pi / 2))
+                .applying(.init(translationX: midpoint.x, y: midpoint.y))
+            context.fill(rayPath, with: .color(rayColor.opacity(0.72)))
+        }
+
+        context.fill(
+            Path(ellipseIn: CGRect(
+                x: center.x - 14 * scale,
+                y: center.y - 10 * scale,
+                width: 28 * scale,
+                height: 20 * scale
+            )),
+            with: .color(coreColor.opacity(0.82))
+        )
+        context.stroke(
+            Path(ellipseIn: CGRect(
+                x: center.x - 21 * scale,
+                y: center.y - 15 * scale,
+                width: 42 * scale,
+                height: 30 * scale
+            )),
+            with: .color(rayColor.opacity(0.68)),
+            lineWidth: 3 * scale
+        )
+    }
+
+    private func drawDefeatCue(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let shardColor = Color(red: 0.95, green: 0.20, blue: 0.14)
+        let dimColor = Color(red: 0.48, green: 0.05, blue: 0.06)
+
+        for index in 0..<6 {
+            let x = center.x + CGFloat(index - 3) * 9 * scale
+            let y = center.y + CGFloat(index % 3 - 1) * 7 * scale
+            var path = Path()
+            path.move(to: CGPoint(x: x, y: y - 11 * scale))
+            path.addLine(to: CGPoint(x: x + 6 * scale, y: y + 2 * scale))
+            path.addLine(to: CGPoint(x: x - 5 * scale, y: y + 9 * scale))
+            path.closeSubpath()
+            context.fill(path, with: .color(shardColor.opacity(0.78)))
+        }
+
+        context.fill(
+            Path(roundedRect: CGRect(
+                x: center.x - 30 * scale,
+                y: center.y + 12 * scale,
+                width: 60 * scale,
+                height: 7 * scale
+            ), cornerRadius: 2 * scale),
+            with: .color(dimColor.opacity(0.82))
+        )
+        context.stroke(
+            Path(roundedRect: CGRect(
+                x: center.x - 34 * scale,
+                y: center.y - 18 * scale,
+                width: 68 * scale,
+                height: 40 * scale
+            ), cornerRadius: 3 * scale),
+            with: .color(shardColor.opacity(0.42)),
+            lineWidth: 3 * scale
+        )
+    }
+}
+
+enum BattleContactPulse: Equatable {
+    case heroHitEnemy
+    case monsterHitParty
+
+    static func visible(for entry: BattleLogEntry?) -> BattleContactPulse? {
+        guard let entry, entry.kind == .damage, entry.damage > 0 else { return nil }
+        if entry.attacker.isHeroSide {
+            return .heroHitEnemy
+        }
+        if entry.attacker == .monster {
+            return .monsterHitParty
+        }
+        return nil
+    }
+
+    var xAnchorRatio: CGFloat {
+        switch self {
+        case .heroHitEnemy:
+            return 0.57
+        case .monsterHitParty:
+            return 0.24
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .heroHitEnemy:
+            return Color(red: 1.0, green: 0.82, blue: 0.16)
+        case .monsterHitParty:
+            return Color(red: 1.0, green: 0.26, blue: 0.12)
+        }
+    }
+
+    var secondaryTint: Color {
+        switch self {
+        case .heroHitEnemy:
+            return Color.white.opacity(0.90)
+        case .monsterHitParty:
+            return Color(red: 1.0, green: 0.82, blue: 0.18)
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .heroHitEnemy:
+            return "我方命中反馈"
+        case .monsterHitParty:
+            return "敌方命中反馈"
+        }
+    }
+}
+
+private struct BattleContactPulseView: View {
+    let pulse: BattleContactPulse
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+
+            ZStack {
+                Ellipse()
+                    .stroke(pulse.tint.opacity(0.86), lineWidth: max(1.0, width * 0.035))
+                    .frame(width: width * 0.58, height: height * 0.42)
+                    .position(x: width * 0.50, y: height * 0.56)
+
+                Ellipse()
+                    .stroke(pulse.secondaryTint.opacity(0.74), lineWidth: max(0.8, width * 0.022))
+                    .frame(width: width * 0.34, height: height * 0.24)
+                    .position(x: width * 0.52, y: height * 0.55)
+
+                ForEach(0..<5, id: \.self) { index in
+                    Capsule()
+                        .fill(index.isMultiple(of: 2) ? pulse.secondaryTint : pulse.tint)
+                        .frame(width: width * 0.055, height: height * rayHeightRatio(for: index))
+                        .rotationEffect(.degrees(rayRotation(for: index)))
+                        .position(
+                            x: width * rayXRatio(for: index),
+                            y: height * rayYRatio(for: index)
+                        )
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel(pulse.accessibilityLabel)
+    }
+
+    private func rayHeightRatio(for index: Int) -> CGFloat {
+        [0.44, 0.36, 0.50, 0.32, 0.38][index]
+    }
+
+    private func rayXRatio(for index: Int) -> CGFloat {
+        [0.20, 0.36, 0.52, 0.66, 0.80][index]
+    }
+
+    private func rayYRatio(for index: Int) -> CGFloat {
+        [0.42, 0.24, 0.22, 0.28, 0.46][index]
+    }
+
+    private func rayRotation(for index: Int) -> Double {
+        [-42, -18, 0, 20, 44][index]
     }
 }
 
 private struct BattleTrajectoryCueView: View {
     let cue: BattleTrajectoryCue
     let tint: Color
+    let sourceRangeScale: CGFloat
 
     var body: some View {
         ZStack {
+            Ellipse()
+                .fill(tint.opacity(0.16))
+                .frame(width: 80, height: 22)
+                .blur(radius: 2)
+
             switch cue {
+            case .meleeArc:
+                MeleeArcTrailCue(tint: tint)
             case .projectile:
                 ProjectileTrailCue(tint: tint)
             case .rapidVolley:
@@ -1435,6 +1942,10 @@ private struct BattleTrajectoryCueView: View {
                 LeapArcTrailCue(tint: tint)
             case .meteorFall:
                 MeteorFallTrailCue(tint: tint)
+            case .axeSpinArc:
+                AxeSpinArcTrailCue(tint: tint)
+            case .bleedRendTrail:
+                BleedRendTrailCue(tint: tint)
             case .shockwaveRing:
                 ShockwaveRingTrailCue(tint: tint)
             case .groundRupture:
@@ -1443,8 +1954,44 @@ private struct BattleTrajectoryCueView: View {
                 RockBurstTrailCue(tint: tint)
             }
         }
-        .shadow(color: tint.opacity(0.62), radius: 3, x: 0, y: 0)
+        .scaleEffect(x: sourceRangeScale, y: 1.0, anchor: .center)
+        .shadow(color: tint.opacity(0.82), radius: 6, x: 0, y: 0)
         .accessibilityLabel(cue.accessibilityLabel)
+    }
+}
+
+private struct MeleeArcTrailCue: View {
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            ArcSegment()
+                .stroke(tint.opacity(0.36), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                .frame(width: 58, height: 30)
+                .rotationEffect(.degrees(-8))
+                .offset(x: 6, y: -2)
+
+            ArcSegment()
+                .stroke(tint.opacity(0.92), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 58, height: 30)
+                .rotationEffect(.degrees(-8))
+                .offset(x: 6, y: -2)
+
+            ForEach([CGPoint(x: 44, y: 6), CGPoint(x: 52, y: 12), CGPoint(x: 47, y: 20)], id: \.x) { point in
+                Rectangle()
+                    .fill(Color.white.opacity(0.76))
+                    .frame(width: 7, height: 2)
+                    .rotationEffect(.degrees(point.y > 12 ? -28 : 28))
+                    .position(point)
+            }
+
+            Capsule()
+                .fill(Color.white.opacity(0.72))
+                .frame(width: 22, height: 2)
+                .rotationEffect(.degrees(-12))
+                .offset(x: 22, y: -8)
+        }
+        .frame(width: 66, height: 30)
     }
 }
 
@@ -1454,23 +2001,34 @@ private struct ProjectileTrailCue: View {
     var body: some View {
         ZStack {
             Capsule()
-                .fill(tint.opacity(0.42))
-                .frame(width: 58, height: 4)
+                .fill(tint.opacity(0.20))
+                .frame(width: 66, height: 12)
+                .rotationEffect(.degrees(-5))
+
+            Capsule()
+                .fill(tint.opacity(0.58))
+                .frame(width: 64, height: 6)
                 .rotationEffect(.degrees(-5))
             Capsule()
                 .fill(tint)
-                .frame(width: 42, height: 2)
+                .frame(width: 50, height: 3)
                 .rotationEffect(.degrees(-5))
                 .offset(x: 8, y: -1)
             Circle()
                 .fill(tint)
-                .frame(width: 8, height: 8)
-                .offset(x: 25, y: -2)
-            ForEach([-20.0, -8.0, 5.0], id: \.self) { offset in
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Circle()
+                        .fill(Color.white.opacity(0.76))
+                        .frame(width: 5, height: 5)
+                        .offset(x: 2, y: -2)
+                )
+                .offset(x: 30, y: -2)
+            ForEach([-25.0, -13.0, 0.0, 13.0], id: \.self) { offset in
                 Rectangle()
                     .fill(Color.white.opacity(0.78))
-                    .frame(width: 4, height: 2)
-                    .offset(x: offset, y: 4)
+                    .frame(width: 6, height: 2)
+                    .offset(x: offset, y: 6)
             }
         }
     }
@@ -1882,12 +2440,12 @@ private struct LeapArcTrailCue: View {
     var body: some View {
         ZStack {
             Path { path in
-                path.move(to: CGPoint(x: 4, y: 15))
-                path.addQuadCurve(to: CGPoint(x: 62, y: 12), control: CGPoint(x: 28, y: -7))
+                path.move(to: CGPoint(x: 4, y: 19))
+                path.addQuadCurve(to: CGPoint(x: 62, y: 15), control: CGPoint(x: 28, y: -11))
             }
             .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [3, 3]))
 
-            ForEach([CGPoint(x: 15, y: 8), CGPoint(x: 31, y: 2), CGPoint(x: 47, y: 7)], id: \.x) { point in
+            ForEach([CGPoint(x: 15, y: 10), CGPoint(x: 31, y: 3), CGPoint(x: 47, y: 9)], id: \.x) { point in
                 Circle()
                     .fill(tint.opacity(0.74))
                     .frame(width: 5, height: 5)
@@ -1898,9 +2456,10 @@ private struct LeapArcTrailCue: View {
                 .fill(Color.white.opacity(0.84))
                 .frame(width: 15, height: 4)
                 .rotationEffect(.degrees(-16))
-                .offset(x: 22, y: 4)
+                .offset(x: 22, y: 6)
         }
-        .frame(width: 66, height: 18)
+        .frame(width: 66, height: 24)
+        .scaleEffect(x: 1.0, y: 1.20, anchor: .center)
     }
 }
 
@@ -1930,6 +2489,64 @@ private struct MeteorFallTrailCue: View {
                         .frame(width: 6, height: 6)
                 )
                 .offset(x: 24, y: 6)
+        }
+        .frame(width: 66, height: 18)
+    }
+}
+
+private struct AxeSpinArcTrailCue: View {
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            ForEach([0.0, 12.0, 24.0], id: \.self) { offset in
+                ArcSegment()
+                    .stroke(tint.opacity(0.78 - offset / 70), style: StrokeStyle(lineWidth: 2.2, lineCap: .square))
+                    .frame(width: 34 + offset, height: 16 + offset * 0.20)
+                    .rotationEffect(.degrees(offset == 12 ? 4 : -4))
+                    .offset(x: offset * 0.25)
+            }
+
+            Capsule()
+                .fill(Color.white.opacity(0.82))
+                .frame(width: 26, height: 3)
+                .rotationEffect(.degrees(-12))
+                .offset(x: 19, y: -3)
+
+            ForEach([CGPoint(x: 14, y: 12), CGPoint(x: 33, y: 5), CGPoint(x: 55, y: 12)], id: \.x) { point in
+                Diamond()
+                    .fill(tint.opacity(0.82))
+                    .frame(width: 5, height: 5)
+                    .position(point)
+            }
+        }
+        .frame(width: 66, height: 18)
+    }
+}
+
+private struct BleedRendTrailCue: View {
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            ForEach([0.0, 1.0, 2.0], id: \.self) { index in
+                Path { path in
+                    let y = 5 + index * 4
+                    path.move(to: CGPoint(x: 8, y: y + 4))
+                    path.addQuadCurve(
+                        to: CGPoint(x: 58, y: y),
+                        control: CGPoint(x: 30, y: y - 8)
+                    )
+                }
+                .stroke(tint.opacity(0.82 - index * 0.12), style: StrokeStyle(lineWidth: 2.4 - index * 0.3, lineCap: .round))
+            }
+
+            ForEach([CGPoint(x: 21, y: 13), CGPoint(x: 39, y: 8), CGPoint(x: 52, y: 14)], id: \.x) { point in
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.46, blue: 0.38).opacity(0.82))
+                    .frame(width: 4, height: 4)
+                    .position(point)
+            }
         }
         .frame(width: 66, height: 18)
     }
@@ -2029,6 +2646,8 @@ private struct BattleUtilityCueView: View {
                 ResurrectionRiseCue(cue: cue)
             case .shieldField:
                 ShieldFieldCue(cue: cue)
+            case .wrathOfHeavenStorm:
+                WrathOfHeavenStormCue(cue: cue)
             case .sacredBladeGlow:
                 SacredBladeGlowCue(cue: cue)
             case .swiftSurgeHaste:
@@ -2043,6 +2662,7 @@ private struct BattleUtilityCueView: View {
                 BuffAuraCue(cue: cue)
             }
         }
+        .scaleEffect(BattleSceneMetrics.utilityCueScale)
         .shadow(color: cue.tint.opacity(0.58), radius: 4, x: 0, y: 0)
         .accessibilityLabel(cue.accessibilityLabel)
     }
@@ -2107,8 +2727,8 @@ private struct ResurrectionRiseCue: View {
             ForEach([-15.0, 0.0, 15.0], id: \.self) { offset in
                 Capsule()
                     .fill(cue.tint.opacity(offset == 0 ? 0.82 : 0.52))
-                    .frame(width: offset == 0 ? 5 : 3, height: offset == 0 ? 32 : 24)
-                    .offset(x: offset, y: offset == 0 ? -3 : 2)
+                    .frame(width: offset == 0 ? 5 : 3, height: offset == 0 ? 40 : 30)
+                    .offset(x: offset, y: offset == 0 ? -5 : 3)
             }
 
             Diamond()
@@ -2119,14 +2739,14 @@ private struct ResurrectionRiseCue: View {
                         .fill(Color.white.opacity(0.82))
                         .frame(width: 6, height: 6)
                 )
-                .offset(y: -12)
+                .offset(y: -16)
 
             Capsule()
                 .stroke(cue.tint.opacity(0.70), lineWidth: 1.6)
                 .frame(width: 38, height: 9)
-                .offset(y: 13)
+                .offset(y: 16)
         }
-        .frame(width: 58, height: 38)
+        .frame(width: 58, height: 46)
     }
 }
 
@@ -2166,6 +2786,39 @@ private struct ShieldFieldCue: View {
             )
         }
         .frame(width: 58, height: 38)
+    }
+}
+
+private struct WrathOfHeavenStormCue: View {
+    let cue: BattleUtilityCue
+
+    var body: some View {
+        ZStack {
+            ForEach([0.0, 1.0, 2.0], id: \.self) { index in
+                let xOffset = CGFloat(index - 1) * 16
+
+                Path { path in
+                    path.move(to: CGPoint(x: 31 + xOffset, y: 4))
+                    path.addLine(to: CGPoint(x: 24 + xOffset, y: 18))
+                    path.addLine(to: CGPoint(x: 32 + xOffset, y: 18))
+                    path.addLine(to: CGPoint(x: 26 + xOffset, y: 36))
+                }
+                .stroke(cue.tint.opacity(index == 1 ? 0.92 : 0.64), style: StrokeStyle(lineWidth: index == 1 ? 2.5 : 1.8, lineCap: .square, lineJoin: .miter))
+            }
+
+            Ellipse()
+                .stroke(cue.tint.opacity(0.70), lineWidth: 1.7)
+                .frame(width: 46, height: 13)
+                .offset(y: 13)
+
+            ForEach([CGPoint(x: 15, y: 9), CGPoint(x: 47, y: 8), CGPoint(x: 31, y: 25)], id: \.x) { point in
+                Diamond()
+                    .fill(Color.white.opacity(0.82))
+                    .frame(width: 5, height: 5)
+                    .position(point)
+            }
+        }
+        .frame(width: 62, height: 40)
     }
 }
 
@@ -2356,9 +3009,18 @@ private struct BattleImpactCueView: View {
 
     var body: some View {
         ZStack {
+            Circle()
+                .fill(cue.tint.opacity(0.16))
+                .frame(width: 50, height: 50)
+                .blur(radius: 2)
+
             switch cue {
             case .physicalSlash:
                 PhysicalSlashCue(cue: cue)
+            case .axeSpinImpact:
+                AxeSpinImpactCue(cue: cue)
+            case .bleedRendImpact:
+                BleedRendImpactCue(cue: cue)
             case .shockwaveImpact:
                 ShockwaveImpactCue(cue: cue)
             case .earthquakeImpact:
@@ -2389,7 +3051,8 @@ private struct BattleImpactCueView: View {
                 SummonProjectileCue(cue: cue)
             }
         }
-        .shadow(color: cue.tint.opacity(0.65), radius: 4, x: 0, y: 0)
+        .scaleEffect(BattleSceneMetrics.effectScale)
+        .shadow(color: cue.tint.opacity(0.86), radius: 7, x: 0, y: 0)
         .accessibilityLabel(cue.accessibilityLabel)
     }
 }
@@ -2451,20 +3114,85 @@ private struct PhysicalSlashCue: View {
     var body: some View {
         ZStack {
             Capsule()
+                .fill(cue.tint.opacity(0.20))
+                .frame(width: 42, height: 22)
+                .rotationEffect(.degrees(-24))
+
+            Capsule()
                 .fill(cue.secondaryTint.opacity(0.90))
-                .frame(width: 30, height: 5)
+                .frame(width: 40, height: 7)
                 .rotationEffect(.degrees(-24))
             Capsule()
                 .fill(cue.tint)
-                .frame(width: 26, height: 2)
+                .frame(width: 34, height: 3)
                 .rotationEffect(.degrees(-24))
                 .offset(x: 2, y: -1)
             Capsule()
                 .fill(cue.tint.opacity(0.82))
-                .frame(width: 18, height: 2)
+                .frame(width: 26, height: 3)
                 .rotationEffect(.degrees(22))
                 .offset(x: -2, y: 6)
+            Capsule()
+                .fill(Color.white.opacity(0.86))
+                .frame(width: 22, height: 2)
+                .rotationEffect(.degrees(-24))
+                .offset(x: 7, y: -5)
         }
+    }
+}
+
+private struct AxeSpinImpactCue: View {
+    let cue: BattleImpactCue
+
+    var body: some View {
+        ZStack {
+            ForEach([0.0, 10.0, 20.0], id: \.self) { offset in
+                ArcSegment()
+                    .stroke(offset == 10 ? cue.tint : cue.secondaryTint.opacity(0.75), style: StrokeStyle(lineWidth: offset == 10 ? 3 : 2, lineCap: .square))
+                    .frame(width: 24 + offset, height: 15 + offset * 0.22)
+                    .rotationEffect(.degrees(offset == 20 ? 8 : -8))
+            }
+
+            Capsule()
+                .fill(Color.white.opacity(0.84))
+                .frame(width: 24, height: 3)
+                .rotationEffect(.degrees(-18))
+                .offset(x: 8, y: -6)
+
+            Diamond()
+                .fill(cue.tint.opacity(0.90))
+                .frame(width: 9, height: 9)
+                .offset(x: 18, y: 6)
+        }
+        .frame(width: 50, height: 34)
+    }
+}
+
+private struct BleedRendImpactCue: View {
+    let cue: BattleImpactCue
+
+    var body: some View {
+        ZStack {
+            ForEach([0.0, 1.0, 2.0], id: \.self) { index in
+                Path { path in
+                    let y = 11 + index * 5
+                    path.move(to: CGPoint(x: 5, y: y + 4))
+                    path.addQuadCurve(
+                        to: CGPoint(x: 43, y: y - 5),
+                        control: CGPoint(x: 20, y: y - 12)
+                    )
+                }
+                .stroke(index == 1 ? cue.tint : cue.secondaryTint.opacity(0.85), style: StrokeStyle(lineWidth: 3 - index * 0.35, lineCap: .round))
+            }
+
+            ForEach([CGPoint(x: 19, y: 23), CGPoint(x: 31, y: 14), CGPoint(x: 39, y: 24)], id: \.x) { point in
+                Circle()
+                    .fill(Color(red: 1.0, green: 0.48, blue: 0.36).opacity(0.82))
+                    .frame(width: 4, height: 4)
+                    .position(point)
+            }
+        }
+        .frame(width: 50, height: 34)
     }
 }
 
@@ -2802,9 +3530,13 @@ private struct PlayerDeployableStack: View {
     let deployables: [PlayerBattleDeployable]
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 3) {
+        let scale = BattleSceneMetrics.deployableScale
+
+        HStack(alignment: .bottom, spacing: 3 * scale) {
             ForEach(Array(deployables.prefix(3)), id: \.self) { deployable in
                 PlayerDeployableGlyph(deployable: deployable)
+                    .scaleEffect(scale, anchor: .bottom)
+                    .frame(width: 18 * scale, height: 20 * scale, alignment: .bottom)
             }
         }
         .accessibilityElement(children: .combine)
@@ -2859,12 +3591,12 @@ private struct TrapGlyph: View {
         ZStack {
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color(red: 0.10, green: 0.34, blue: 0.34))
-                .frame(width: 13, height: 13)
+                .frame(width: 15, height: 15)
                 .rotationEffect(.degrees(45))
 
             RoundedRectangle(cornerRadius: 1)
-                .stroke(Color(red: 0.42, green: 1.0, blue: 0.88), lineWidth: 1.2)
-                .frame(width: 12, height: 12)
+                .stroke(Color(red: 0.42, green: 1.0, blue: 0.88), lineWidth: 1.8)
+                .frame(width: 14, height: 14)
                 .rotationEffect(.degrees(45))
 
             Circle()
@@ -2952,11 +3684,11 @@ private struct PeripheralEnemyStack: View {
             ForEach(Array(enemyStates.enumerated()), id: \.element.id) { index, state in
                 MiniEnemyView(state: state, animationTime: animationTime, idlePhase: Double(index) * 0.7)
                     .opacity(0.72 - Double(index) * 0.10)
-                    .offset(x: CGFloat(index) * -10, y: CGFloat(index) * -2)
+                    .offset(x: CGFloat(index) * -10 * BattleSceneMetrics.visualScale, y: CGFloat(index) * -2 * BattleSceneMetrics.visualScale)
                     .zIndex(Double(enemyStates.count - index))
             }
         }
-        .frame(width: 48, height: 34, alignment: .bottomTrailing)
+        .frame(width: 48 * BattleSceneMetrics.visualScale, height: 34 * BattleSceneMetrics.visualScale, alignment: .bottomTrailing)
         .accessibilityHidden(true)
     }
 }
@@ -2968,20 +3700,27 @@ private struct MiniEnemyView: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            CompactHPBar(hp: state.hp, maxHP: state.maxHP, tint: .red, width: 18)
+            CompactHPBar(hp: state.hp, maxHP: state.maxHP, tint: .red, width: 18 * BattleSceneMetrics.visualScale)
             ZStack(alignment: .topTrailing) {
+                EnemyStatusAuraView(
+                    badges: EnemyStatusBadge.visible(for: state),
+                    compact: true,
+                    scale: BattleSceneMetrics.effectScale
+                )
+                .offset(y: battleIdleYOffset(time: animationTime, phase: idlePhase, amplitude: 1))
+
                 PixelSprite(
                     imageName: GameArt.battleMonsterSpriteName(for: state.monster.id),
-                    size: CGSize(width: 18, height: 24)
+                    size: CGSize(width: 18 * BattleSceneMetrics.visualScale, height: 24 * BattleSceneMetrics.visualScale)
                 )
                 .saturation(0.86)
                 .offset(y: battleIdleYOffset(time: animationTime, phase: idlePhase, amplitude: 1))
 
                 EnemyStatusBadgeStack(
                     badges: EnemyStatusBadge.visible(for: state),
-                    iconSize: 5
+                    iconSize: 5 * BattleSceneMetrics.effectScale
                 )
-                .offset(x: 3, y: -2)
+                .offset(x: 3 * BattleSceneMetrics.effectScale, y: -2 * BattleSceneMetrics.effectScale)
             }
         }
     }
@@ -3068,6 +3807,176 @@ private struct EnemyStatusBadgeStack: View {
     }
 }
 
+private struct EnemyStatusAuraView: View {
+    let badges: [EnemyStatusBadge]
+    let compact: Bool
+    let scale: CGFloat
+
+    var body: some View {
+        ZStack {
+            if badges.contains(.chilled) {
+                chilledMist
+            }
+            if badges.contains(.frozen) {
+                frozenCrystals
+            }
+            if badges.contains(.stunned) {
+                stunnedSparks
+            }
+            if badges.contains(.bleeding) {
+                bleedingMarks
+            }
+        }
+        .frame(width: baseWidth * scale, height: baseHeight * scale)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var baseWidth: CGFloat { compact ? 24 : 56 }
+    private var baseHeight: CGFloat { compact ? 30 : 62 }
+    private var strokeWidth: CGFloat { max(1.0, (compact ? 0.75 : 1.25) * scale) }
+
+    private var chilledMist: some View {
+        ZStack {
+            Capsule()
+                .stroke(Color(red: 0.36, green: 0.95, blue: 1.0).opacity(0.72), lineWidth: strokeWidth)
+                .frame(width: baseWidth * 0.82 * scale, height: baseHeight * 0.40 * scale)
+                .offset(y: baseHeight * 0.12 * scale)
+
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(Color(red: 0.46, green: 0.94, blue: 1.0).opacity(0.82))
+                    .frame(width: mistDotSize(for: index) * scale, height: mistDotSize(for: index) * scale)
+                    .offset(
+                        x: mistXOffset(for: index) * scale,
+                        y: mistYOffset(for: index) * scale
+                    )
+            }
+        }
+    }
+
+    private var frozenCrystals: some View {
+        ZStack {
+            Capsule()
+                .fill(Color(red: 0.18, green: 0.50, blue: 1.0).opacity(0.28))
+                .frame(width: baseWidth * 0.72 * scale, height: baseHeight * 0.82 * scale)
+
+            ForEach(0..<4, id: \.self) { index in
+                Capsule()
+                    .fill(frostColor(for: index))
+                    .frame(
+                        width: (compact ? 2.2 : 3.6) * scale,
+                        height: frostHeight(for: index) * scale
+                    )
+                    .rotationEffect(.degrees(frostRotation(for: index)))
+                    .offset(
+                        x: frostXOffset(for: index) * scale,
+                        y: frostYOffset(for: index) * scale
+                    )
+            }
+        }
+    }
+
+    private var stunnedSparks: some View {
+        ZStack {
+            ForEach(0..<4, id: \.self) { index in
+                Image(systemName: index == 1 ? "sparkle" : "star.fill")
+                    .font(.system(size: stunSparkSize(for: index) * scale, weight: .black))
+                    .foregroundColor(Color(red: 1.0, green: 0.82, blue: 0.14))
+                    .shadow(color: Color(red: 1.0, green: 0.48, blue: 0.04).opacity(0.75), radius: compact ? 0.8 : 1.6)
+                    .offset(
+                        x: stunXOffset(for: index) * scale,
+                        y: stunYOffset(for: index) * scale
+                    )
+            }
+        }
+    }
+
+    private var bleedingMarks: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Capsule()
+                    .fill(Color(red: 0.95, green: 0.06, blue: 0.06).opacity(index == 2 ? 0.86 : 0.95))
+                    .frame(
+                        width: bloodWidth(for: index) * scale,
+                        height: bloodHeight(for: index) * scale
+                    )
+                    .rotationEffect(.degrees(bloodRotation(for: index)))
+                    .offset(
+                        x: bloodXOffset(for: index) * scale,
+                        y: bloodYOffset(for: index) * scale
+                    )
+            }
+        }
+    }
+
+    private func mistDotSize(for index: Int) -> CGFloat {
+        compact ? [2.4, 2.0, 1.8][index] : [4.8, 3.8, 3.4][index]
+    }
+
+    private func mistXOffset(for index: Int) -> CGFloat {
+        compact ? [-8, 0, 8][index] : [-17, 0, 17][index]
+    }
+
+    private func mistYOffset(for index: Int) -> CGFloat {
+        compact ? [1, -4, 2][index] : [4, -8, 5][index]
+    }
+
+    private func frostColor(for index: Int) -> Color {
+        index.isMultiple(of: 2)
+            ? Color(red: 0.80, green: 0.96, blue: 1.0).opacity(0.88)
+            : Color(red: 0.20, green: 0.56, blue: 1.0).opacity(0.86)
+    }
+
+    private func frostHeight(for index: Int) -> CGFloat {
+        compact ? [12, 9, 10, 8][index] : [28, 20, 24, 18][index]
+    }
+
+    private func frostXOffset(for index: Int) -> CGFloat {
+        compact ? [-7, -2, 5, 9][index] : [-18, -5, 12, 20][index]
+    }
+
+    private func frostYOffset(for index: Int) -> CGFloat {
+        compact ? [-1, -7, -5, 1][index] : [-2, -16, -11, 4][index]
+    }
+
+    private func frostRotation(for index: Int) -> Double {
+        [-18, 12, -8, 20][index]
+    }
+
+    private func stunSparkSize(for index: Int) -> CGFloat {
+        compact ? [3.2, 2.6, 2.8, 2.2][index] : [7.4, 5.8, 6.6, 5.2][index]
+    }
+
+    private func stunXOffset(for index: Int) -> CGFloat {
+        compact ? [-8, -1, 7, 2][index] : [-20, -3, 18, 6][index]
+    }
+
+    private func stunYOffset(for index: Int) -> CGFloat {
+        compact ? [-13, -17, -13, -9][index] : [-31, -39, -30, -23][index]
+    }
+
+    private func bloodWidth(for index: Int) -> CGFloat {
+        compact ? [2.5, 2.0, 1.8][index] : [5.0, 4.0, 3.4][index]
+    }
+
+    private func bloodHeight(for index: Int) -> CGFloat {
+        compact ? [9, 7, 5][index] : [18, 14, 11][index]
+    }
+
+    private func bloodXOffset(for index: Int) -> CGFloat {
+        compact ? [-6, -1, 5][index] : [-14, -2, 12][index]
+    }
+
+    private func bloodYOffset(for index: Int) -> CGFloat {
+        compact ? [6, 9, 7][index] : [14, 22, 17][index]
+    }
+
+    private func bloodRotation(for index: Int) -> Double {
+        [-18, 8, 24][index]
+    }
+}
+
 private struct WaveProgressDots: View {
     let current: Int
     let total: Int
@@ -3093,6 +4002,41 @@ private struct WaveProgressDots: View {
     }
 }
 
+private enum BattleActionFrameDirection {
+    case left
+    case right
+}
+
+private struct BattleActionFrameCueView: View {
+    let direction: BattleActionFrameDirection
+    let tint: Color
+
+    var body: some View {
+        let scale = BattleSceneMetrics.effectScale
+        let sign: CGFloat = direction == .right ? 1 : -1
+
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Rectangle()
+                    .fill(tint.opacity(0.72 - Double(index) * 0.16))
+                    .frame(
+                        width: (18 - CGFloat(index) * 4) * scale,
+                        height: max(CGFloat(2), 2 * scale)
+                    )
+                    .offset(
+                        x: sign * (CGFloat(index) * 5 - 4) * scale,
+                        y: (CGFloat(index) - 1) * 4 * scale
+                    )
+            }
+        }
+        .frame(width: 32 * scale, height: 22 * scale)
+        .rotationEffect(.degrees(direction == .right ? -8 : 8))
+        .shadow(color: tint.opacity(0.55), radius: 2 * scale)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 struct PartyCombatantView: View {
     @ObservedObject var battle: Battle
     let isHeroStriking: Bool
@@ -3106,16 +4050,16 @@ struct PartyCombatantView: View {
                 hp: battle.heroHP,
                 maxHP: battle.hero.maxHP,
                 tint: .green,
-                width: 46
+                width: 46 * BattleSceneMetrics.visualScale
             )
-            .offset(x: mainHeroXOffset, y: -62)
+            .offset(x: mainHeroXOffset, y: -62 * BattleSceneMetrics.visualScale)
             .zIndex(6)
 
             ZStack(alignment: .bottom) {
                 Ellipse()
                     .fill(Color.black.opacity(0.24))
-                    .frame(width: 88, height: 8)
-                    .offset(y: -2)
+                    .frame(width: 88 * BattleSceneMetrics.visualScale, height: 8 * BattleSceneMetrics.visualScale)
+                    .offset(y: -2 * BattleSceneMetrics.visualScale)
 
                 ForEach(Array(battle.supportStates.enumerated()), id: \.element.id) { index, state in
                     ZStack(alignment: .top) {
@@ -3124,14 +4068,25 @@ struct PartyCombatantView: View {
                             size: BattleHeroSpriteMetrics.supportSize(for: state.member.heroClass)
                         )
                         .scaleEffect(x: BattleHeroSpriteMetrics.enemyFacingXScale, y: 1, anchor: .center)
+                        .scaleEffect(
+                            x: isHit && !state.isDefeated ? 1.04 : 1,
+                            y: isHit && !state.isDefeated ? BattleSceneMetrics.hitSquashYScale : 1,
+                            anchor: .bottom
+                        )
+                        .overlay {
+                            if isSupportStriking && !state.isDefeated {
+                                BattleActionFrameCueView(direction: .right, tint: .cyan)
+                                    .offset(x: 14 * BattleSceneMetrics.effectScale, y: -2 * BattleSceneMetrics.effectScale)
+                            }
+                        }
 
                         CompactHPBar(
                             hp: state.hp,
                             maxHP: state.maxHP,
                             tint: state.isDefeated ? .gray : .green,
-                            width: 22
+                            width: BattleSceneMetrics.supportHPBarWidth * BattleSceneMetrics.visualScale
                         )
-                        .offset(y: -3)
+                        .offset(y: -3 * BattleSceneMetrics.visualScale)
                     }
                     .opacity(state.isDefeated ? 0.30 : 0.72)
                     .saturation(state.isDefeated ? 0.25 : 1)
@@ -3149,9 +4104,20 @@ struct PartyCombatantView: View {
                     size: BattleHeroSpriteMetrics.mainSize(for: battle.primaryHeroClass)
                 )
                 .scaleEffect(x: BattleHeroSpriteMetrics.enemyFacingXScale, y: 1, anchor: .center)
+                .scaleEffect(
+                    x: isHit ? 1.06 : 1,
+                    y: isHit ? BattleSceneMetrics.hitSquashYScale : 1,
+                    anchor: .bottom
+                )
                 .scaleEffect(isHeroStriking ? 1.05 : 1.0, anchor: .bottom)
+                .overlay {
+                    if isHeroStriking {
+                        BattleActionFrameCueView(direction: .right, tint: .white)
+                            .offset(x: 16 * BattleSceneMetrics.effectScale, y: -3 * BattleSceneMetrics.effectScale)
+                    }
+                }
                 .offset(
-                    x: mainHeroXOffset + (isHeroStriking ? 8 : 0) + battleIdleXOffset(time: animationTime, phase: 0.0, amplitude: 1),
+                    x: mainHeroXOffset + (isHeroStriking ? BattleSceneMetrics.strikeLungeDistance : 0) + battleIdleXOffset(time: animationTime, phase: 0.0, amplitude: 1),
                     y: battleIdleYOffset(time: animationTime, phase: 0.0, amplitude: 2)
                 )
                 .brightness(isHit ? 0.28 : 0)
@@ -3160,27 +4126,27 @@ struct PartyCombatantView: View {
 
                 if isHit {
                     Image(systemName: "burst.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * BattleSceneMetrics.visualScale, weight: .bold))
                         .foregroundColor(.yellow)
                         .shadow(color: .orange, radius: 3)
-                        .offset(x: 20, y: -40)
+                        .offset(x: 20 * BattleSceneMetrics.visualScale, y: -40 * BattleSceneMetrics.visualScale)
                         .zIndex(7)
                 }
             }
-            .frame(width: 126, height: 68, alignment: .bottom)
+            .frame(width: 126 * BattleSceneMetrics.visualScale, height: BattleSceneMetrics.combatantFrameHeight, alignment: .bottom)
         }
     }
 
     private var mainHeroXOffset: CGFloat {
-        -40
+        -40 * BattleSceneMetrics.visualScale
     }
 
     private func supportOffset(index: Int) -> CGFloat {
-        index == 0 ? 16 : 48
+        (index == 0 ? -58 : -74) * BattleSceneMetrics.visualScale
     }
 
     private func supportYOffset(index: Int) -> CGFloat {
-        index == 0 ? -1 : 0
+        (index == 0 ? -1 : 2) * BattleSceneMetrics.visualScale
     }
 }
 
@@ -3199,42 +4165,75 @@ struct CombatantView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CompactHPBar(hp: hp, maxHP: maxHP, tint: tint, width: 46)
-                .offset(y: -62)
+            CompactHPBar(hp: hp, maxHP: maxHP, tint: tint, width: 46 * BattleSceneMetrics.visualScale)
+                .offset(y: -62 * BattleSceneMetrics.visualScale)
             .zIndex(4)
 
             ZStack(alignment: .center) {
                 Ellipse()
                     .fill(Color.black.opacity(0.26))
-                    .frame(width: 58, height: 8)
-                    .offset(y: 28)
+                    .frame(width: 58 * BattleSceneMetrics.visualScale, height: 8 * BattleSceneMetrics.visualScale)
+                    .offset(y: 28 * BattleSceneMetrics.visualScale)
+
+                if !statusBadges.isEmpty {
+                    EnemyStatusAuraView(
+                        badges: statusBadges,
+                        compact: false,
+                        scale: BattleSceneMetrics.effectScale
+                    )
+                    .offset(
+                        x: (isHero ? 0 : -2) * BattleSceneMetrics.effectScale,
+                        y: -2 * BattleSceneMetrics.effectScale
+                    )
+                    .zIndex(1)
+                }
 
                 PixelSprite(imageName: imageName, size: spriteSize)
+                    .scaleEffect(
+                        x: isHit ? 1.06 : 1,
+                        y: isHit ? BattleSceneMetrics.hitSquashYScale : 1,
+                        anchor: .bottom
+                    )
                     .scaleEffect(isStriking ? 1.05 : 1.0, anchor: .bottom)
+                    .overlay {
+                        if isStriking {
+                            BattleActionFrameCueView(
+                                direction: isHero ? .right : .left,
+                                tint: isHero ? .white : .red
+                            )
+                            .offset(
+                                x: (isHero ? 16 : -16) * BattleSceneMetrics.effectScale,
+                                y: -3 * BattleSceneMetrics.effectScale
+                            )
+                        }
+                    }
                     .offset(
-                        x: (isStriking ? (isHero ? 8 : -8) : 0) + battleIdleXOffset(time: animationTime, phase: idlePhase, amplitude: 1),
+                        x: (isStriking ? (isHero ? BattleSceneMetrics.strikeLungeDistance : -BattleSceneMetrics.strikeLungeDistance) : 0) + battleIdleXOffset(time: animationTime, phase: idlePhase, amplitude: 1),
                         y: battleIdleYOffset(time: animationTime, phase: idlePhase, amplitude: 2)
                     )
                     .brightness(isHit ? 0.28 : 0)
                     .saturation(isHit ? 0.75 : 1)
+                    .zIndex(2)
 
                 if isHit {
                     Image(systemName: "burst.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * BattleSceneMetrics.visualScale, weight: .bold))
                         .foregroundColor(.yellow)
                         .shadow(color: .orange, radius: 3)
-                        .offset(x: isHero ? 15 : -18, y: -12)
+                        .offset(x: (isHero ? 15 : -18) * BattleSceneMetrics.visualScale, y: -12 * BattleSceneMetrics.visualScale)
+                        .zIndex(3)
                 }
 
                 if !statusBadges.isEmpty {
-                    EnemyStatusBadgeStack(badges: statusBadges, iconSize: 8)
-                        .padding(3)
+                    EnemyStatusBadgeStack(badges: statusBadges, iconSize: 8 * BattleSceneMetrics.effectScale)
+                        .padding(3 * BattleSceneMetrics.effectScale)
                         .background(Color.black.opacity(0.42))
                         .clipShape(Capsule())
-                        .offset(x: isHero ? 18 : -22, y: -28)
+                        .offset(x: (isHero ? 18 : -22) * BattleSceneMetrics.effectScale, y: -28 * BattleSceneMetrics.effectScale)
+                        .zIndex(4)
                 }
             }
-            .frame(width: 76, height: 68)
+            .frame(width: 76 * BattleSceneMetrics.visualScale, height: BattleSceneMetrics.combatantFrameHeight)
         }
     }
 }
@@ -3410,53 +4409,44 @@ private struct FloatingDamageText: View {
     let entry: BattleLogEntry
 
     var body: some View {
-        Text(displayText)
-            .font(.system(size: entry.isCrit ? 10 : 8, weight: .black, design: .monospaced))
+        let style = BattleFloatingDamageStyle.presentation(for: entry)
+
+        Text(BattleFloatingDamageText.displayText(for: entry))
+            .font(.system(size: style.fontSize, weight: style.isHeavy ? .black : .bold, design: .monospaced))
             .foregroundColor(textColor)
             .lineLimit(1)
             .minimumScaleFactor(0.65)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
+            .padding(.horizontal, style.horizontalPadding)
+            .padding(.vertical, style.verticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.black.opacity(0.48))
+                    .fill(Color.black.opacity(style.backgroundOpacity))
                     .overlay(
                         RoundedRectangle(cornerRadius: 3)
-                            .stroke(entry.damageElement.battleColor.opacity(elementStrokeOpacity), lineWidth: 0.7)
+                            .stroke(textColor.opacity(style.borderOpacity), lineWidth: 0.7)
                     )
             )
             .cornerRadius(3)
-            .shadow(color: shadowColor, radius: entry.isCrit ? 5 : 2)
-    }
-
-    private var displayText: String {
-        switch entry.kind {
-        case .damage:
-            let damageText = entry.isCrit ? "CRIT \(entry.damage)" : "\(entry.damage)"
-            if let skillName = entry.skillName {
-                return "\(skillName) \(damageText)"
-            }
-            return damageText
-        case .heal:
-            return "\(entry.skillName ?? "治疗") +\(entry.damage)"
-        case .buff:
-            return entry.skillName ?? "增益"
-        }
+            .shadow(color: shadowColor, radius: style.shadowRadius)
+            .offset(y: style.verticalOffset)
     }
 
     private var textColor: Color {
         switch entry.kind {
         case .damage:
+            if entry.isCrit, entry.damageElement == .none || entry.damageElement == .physical {
+                return .orange
+            }
             return entry.damageElement.battleColor
         case .heal:
             return .green
         case .buff:
             return .cyan
+        case .dodge:
+            return .mint
+        case .block:
+            return .blue
         }
-    }
-
-    private var elementStrokeOpacity: Double {
-        entry.kind == .damage && entry.damageElement != .none ? 0.65 : 0
     }
 
     private var shadowColor: Color {
@@ -3464,6 +4454,143 @@ private struct FloatingDamageText: View {
             return entry.damageElement == .none ? .orange : entry.damageElement.battleColor
         }
         return entry.damageElement == .none ? .black.opacity(0.5) : entry.damageElement.battleColor.opacity(0.45)
+    }
+}
+
+enum BattleFloatingDamageTone: Equatable {
+    case damage
+    case criticalDamage
+    case heal
+    case buff
+    case dodge
+    case block
+}
+
+struct BattleFloatingDamageStyle: Equatable {
+    let tone: BattleFloatingDamageTone
+    let fontSize: CGFloat
+    let horizontalPadding: CGFloat
+    let verticalPadding: CGFloat
+    let backgroundOpacity: Double
+    let borderOpacity: Double
+    let shadowRadius: CGFloat
+    let verticalOffset: CGFloat
+    let isHeavy: Bool
+
+    static func presentation(for entry: BattleLogEntry) -> BattleFloatingDamageStyle {
+        switch entry.kind {
+        case .damage where entry.isCrit:
+            return BattleFloatingDamageStyle(
+                tone: .criticalDamage,
+                fontSize: 11,
+                horizontalPadding: 5,
+                verticalPadding: 2,
+                backgroundOpacity: 0.58,
+                borderOpacity: 0.92,
+                shadowRadius: 6,
+                verticalOffset: -2,
+                isHeavy: true
+            )
+        case .damage:
+            let hasElementBorder = entry.damageElement != .none && entry.damageElement != .physical
+            return BattleFloatingDamageStyle(
+                tone: .damage,
+                fontSize: 8,
+                horizontalPadding: 4,
+                verticalPadding: 1,
+                backgroundOpacity: 0.48,
+                borderOpacity: hasElementBorder ? 0.65 : 0,
+                shadowRadius: 2,
+                verticalOffset: 0,
+                isHeavy: true
+            )
+        case .heal:
+            return utilityStyle(tone: .heal, fontSize: 8, borderOpacity: 0.55, verticalOffset: -1)
+        case .buff:
+            return utilityStyle(tone: .buff, fontSize: 8, borderOpacity: 0.55, verticalOffset: -1)
+        case .dodge:
+            return utilityStyle(tone: .dodge, fontSize: 9, borderOpacity: 0.68, verticalOffset: -2)
+        case .block:
+            return utilityStyle(tone: .block, fontSize: 9, borderOpacity: 0.68, verticalOffset: -2)
+        }
+    }
+
+    private static func utilityStyle(
+        tone: BattleFloatingDamageTone,
+        fontSize: CGFloat,
+        borderOpacity: Double,
+        verticalOffset: CGFloat
+    ) -> BattleFloatingDamageStyle {
+        BattleFloatingDamageStyle(
+            tone: tone,
+            fontSize: fontSize,
+            horizontalPadding: 5,
+            verticalPadding: 2,
+            backgroundOpacity: 0.54,
+            borderOpacity: borderOpacity,
+            shadowRadius: 3,
+            verticalOffset: verticalOffset,
+            isHeavy: false
+        )
+    }
+}
+
+enum BattleFloatingDamageText {
+    static let criticalPrefix = "暴击"
+    static let dodgeText = "闪避!"
+    static let blockText = "格挡!"
+    static let healFallbackText = "治疗"
+    static let buffFallbackText = "增益"
+
+    static func displayText(for entry: BattleLogEntry) -> String {
+        switch entry.kind {
+        case .damage:
+            let damageText = entry.isCrit ? "\(criticalPrefix) \(entry.damage)" : "\(entry.damage)"
+            if let skillName = entry.skillName {
+                return "\(skillName) \(damageText)"
+            }
+            return damageText
+        case .heal:
+            return "\(entry.skillName ?? healFallbackText) +\(entry.damage)"
+        case .buff:
+            return entry.skillName ?? buffFallbackText
+        case .dodge:
+            return dodgeText
+        case .block:
+            return blockText
+        }
+    }
+}
+
+enum BattleLogActionText {
+    static let damageVerb = "造成"
+    static let damageSuffix = "伤害"
+    static let healVerb = "恢复"
+    static let healSuffix = "生命"
+    static let buffText = "触发增益"
+    static let incomingDodgeText = "攻击被闪避"
+    static let incomingBlockText = "攻击被格挡"
+    static let dodgeText = "闪避了攻击"
+    static let blockText = "格挡了攻击"
+    static let criticalLabel = "暴击!"
+
+    static func displayText(for entry: BattleLogEntry) -> String {
+        switch entry.kind {
+        case .damage:
+            return "\(damageVerb) \(entry.damage) \(damageSuffix)"
+        case .heal:
+            return "\(healVerb) \(entry.damage) \(healSuffix)"
+        case .buff:
+            return buffText
+        case .dodge:
+            return entry.attacker == .monster ? incomingDodgeText : dodgeText
+        case .block:
+            return entry.attacker == .monster ? incomingBlockText : blockText
+        }
+    }
+
+    static func criticalText(for entry: BattleLogEntry) -> String? {
+        entry.isCrit ? criticalLabel : nil
     }
 }
 
@@ -3490,47 +4617,53 @@ struct BattleLogRow: View {
             Image(systemName: entry.attacker.iconName)
                 .font(.system(size: 8))
                 .foregroundColor(entry.attacker.tint)
-            Text(entry.attacker.displayName)
+            Text(entry.attackerDisplayName)
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundColor(entry.attacker.tint)
+            if entry.kind == .damage, let elementLabel = entry.damageElement.battleLogLabel {
+                BattleLogElementMarker(label: elementLabel, color: entry.damageElement.battleColor)
+            }
             if let skillName = entry.skillName {
                 HStack(spacing: 3) {
-                    if entry.kind == .damage, entry.damageElement != .none {
-                        Circle()
-                            .fill(entry.damageElement.battleColor)
-                            .frame(width: 4, height: 4)
-                    }
                     Text(skillName)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(entry.damageElement.battleColor)
                         .lineLimit(1)
                 }
             }
-            Text(actionText)
+            Text(BattleLogActionText.displayText(for: entry))
                 .font(.system(size: 9, design: .monospaced))
                 .lineLimit(1)
-            if entry.isCrit {
-                Text("暴击!")
+            if let criticalText = BattleLogActionText.criticalText(for: entry) {
+                Text(criticalText)
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(.orange)
             }
         }
     }
+}
 
-    private var actionText: String {
-        switch entry.kind {
-        case .damage:
-            return "造成 \(entry.damage) 伤害"
-        case .heal:
-            return "恢复 \(entry.damage) 生命"
-        case .buff:
-            return "触发增益"
+private struct BattleLogElementMarker: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Circle()
+                .fill(color)
+                .frame(width: 4, height: 4)
+            Text(label)
+                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                .foregroundColor(color)
+                .lineLimit(1)
         }
+        .accessibilityLabel("伤害类型\(label)")
     }
 }
 
-private struct BattleLogPanel: View {
+struct BattleLogPanel: View {
     let entries: [BattleLogEntry]
+    let heroFocusEntries: [BattleLogEntry]
     let totalCount: Int
 
     var body: some View {
@@ -3559,6 +4692,13 @@ private struct BattleLogPanel: View {
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
+                if !heroFocusEntries.isEmpty {
+                    BattleHeroLogFocus(entries: heroFocusEntries)
+
+                    Divider()
+                        .opacity(0.55)
+                }
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: BattleLogMetrics.rowSpacing) {
@@ -3591,14 +4731,41 @@ private struct BattleLogPanel: View {
     }
 
     private func scrollToLatestEntry(with proxy: ScrollViewProxy, animated: Bool) {
-        guard let latestEntryID = entries.last?.id else { return }
+        guard let targetEntryID = BattleLogDisplayEntries.scrollTargetID(in: entries) else { return }
         DispatchQueue.main.async {
             if animated {
                 withAnimation(.easeOut(duration: 0.18)) {
-                    proxy.scrollTo(latestEntryID, anchor: .bottom)
+                    proxy.scrollTo(targetEntryID, anchor: .bottom)
                 }
             } else {
-                proxy.scrollTo(latestEntryID, anchor: .bottom)
+                proxy.scrollTo(targetEntryID, anchor: .bottom)
+            }
+        }
+    }
+}
+
+private struct BattleHeroLogFocus: View {
+    let entries: [BattleLogEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Image(systemName: "figure.run.circle.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.blue)
+                Text("英雄行动")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary.opacity(0.82))
+                Spacer(minLength: 6)
+                Text("\(entries.count)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: BattleLogMetrics.rowSpacing) {
+                ForEach(entries) { entry in
+                    BattleLogRow(entry: entry)
+                }
             }
         }
     }
@@ -3608,26 +4775,6 @@ private extension BattleLogEntry.Battler {
     var isSupport: Bool {
         if case .support = self { return true }
         return false
-    }
-
-    var isHeroSide: Bool {
-        switch self {
-        case .hero, .support:
-            return true
-        case .monster:
-            return false
-        }
-    }
-
-    var displayName: String {
-        switch self {
-        case .hero:
-            return "主英雄"
-        case .support(let heroClass):
-            return "\(heroClass.rawValue)支援"
-        case .monster:
-            return "怪物"
-        }
     }
 
     var iconName: String {
@@ -3672,20 +4819,47 @@ private extension SkillDamageElement {
 
 struct BattleResultBanner: View {
     let result: BattleResult?
+    let displayedVictoryRewards: BattleResult.Rewards?
+    let levelCapStatus: HeroLevelCapStatus
 
     var body: some View {
         Group {
             switch result {
             case .victory(let rewards):
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("胜利! +\(rewards.xp)XP +\(rewards.gold)G")
-                        .font(.system(size: 11, weight: .medium))
-                    if let item = rewards.lootItem {
-                        Text(rewards.lootItems.count == 1 ? "[\(item.name)]" : "[\(item.name) +\(rewards.lootItems.count - 1)]")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(hex: item.rarity.color))
+                let displayedRewards = displayedVictoryRewards ?? rewards
+                let presentation = BattleVictoryRewardPresentation(
+                    sourceRewards: rewards,
+                    displayedRewards: displayedRewards,
+                    levelCapStatus: levelCapStatus
+                )
+                VStack(spacing: 2) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text(presentation.summaryText)
+                            .font(.system(size: 11, weight: .medium))
+                        if let loot = BattleRewardLootPresentation.make(from: displayedRewards) {
+                            HStack(spacing: 3) {
+                                PixelSprite(
+                                    imageName: loot.iconName,
+                                    size: CGSize(width: 18, height: 18)
+                                )
+                                Text(loot.displayText)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Color(hex: loot.rarityColor))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                            }
+                            .accessibilityLabel("掉落 \(loot.accessibilityText)")
+                        }
+                    }
+
+                    if let rewardDetailText = presentation.rewardDetailText {
+                        Text(rewardDetailText)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(presentation.rewardDetailIsWarning ? .orange : .secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
                 }
             case .defeat:
@@ -3703,6 +4877,99 @@ struct BattleResultBanner: View {
         .frame(maxWidth: .infinity)
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(4)
+    }
+}
+
+struct BattleVictoryRewardPresentation {
+    static let levelCapXPStopMessage = "已达等级上限 · 升级停止"
+    static let encounterClearLabel = "清理"
+    static let adjustedXPLabel = "XP实得"
+    static let adjustedGoldLabel = "金币实得"
+
+    let sourceRewards: BattleResult.Rewards
+    let displayedRewards: BattleResult.Rewards
+    let levelCapStatus: HeroLevelCapStatus
+
+    var summaryText: String {
+        "胜利! +\(displayedRewards.xp)XP +\(displayedRewards.gold)G"
+    }
+
+    var rewardDetailText: String? {
+        let detailParts = [
+            encounterClearText,
+            levelCapXPStopText ?? xpAdjustmentText,
+            goldAdjustmentText
+        ].compactMap { $0 }
+        guard !detailParts.isEmpty else { return nil }
+        return detailParts.joined(separator: " · ")
+    }
+
+    var rewardDetailIsWarning: Bool {
+        levelCapXPStopText != nil
+    }
+
+    var encounterClearText: String? {
+        guard displayedRewards.encountersCleared > 1 else {
+            return nil
+        }
+        return "\(Self.encounterClearLabel) x\(displayedRewards.encountersCleared)"
+    }
+
+    var xpDetailText: String? {
+        rewardDetailText
+    }
+
+    var xpDetailIsWarning: Bool {
+        rewardDetailIsWarning
+    }
+
+    var levelCapXPStopText: String? {
+        guard sourceRewards.xp > 0,
+              displayedRewards.xp == 0,
+              levelCapStatus.isAtLevelCap
+        else {
+            return nil
+        }
+        return Self.levelCapXPStopMessage
+    }
+
+    var xpAdjustmentText: String? {
+        guard sourceRewards.xp > 0,
+              displayedRewards.xp > 0,
+              displayedRewards.xp != sourceRewards.xp
+        else {
+            return nil
+        }
+        return "\(Self.adjustedXPLabel) \(sourceRewards.xp)->\(displayedRewards.xp)"
+    }
+
+    var goldAdjustmentText: String? {
+        guard sourceRewards.gold > 0,
+              displayedRewards.gold > 0,
+              displayedRewards.gold != sourceRewards.gold
+        else {
+            return nil
+        }
+        return "\(Self.adjustedGoldLabel) \(sourceRewards.gold)->\(displayedRewards.gold)"
+    }
+}
+
+struct BattleRewardLootPresentation: Equatable {
+    let displayText: String
+    let accessibilityText: String
+    let iconName: String
+    let rarityColor: String
+
+    static func make(from rewards: BattleResult.Rewards) -> BattleRewardLootPresentation? {
+        guard let item = rewards.lootItem else { return nil }
+        let extraCount = max(0, rewards.lootItems.count - 1)
+        let displayText = extraCount == 0 ? item.name : "\(item.name) +\(extraCount)"
+        return BattleRewardLootPresentation(
+            displayText: displayText,
+            accessibilityText: displayText,
+            iconName: GameArt.itemIconName(for: item),
+            rarityColor: item.rarity.color
+        )
     }
 }
 

@@ -9,8 +9,8 @@ struct CubeProgress: Codable, Equatable {
         "\(totalExperience) XP"
     }
 
-    mutating func infuse(_ item: Item) -> Int {
-        let gainedExperience = item.rarity.cubeExperience
+    mutating func infuse(_ item: Item, multiplier: Double = 1.0) -> Int {
+        let gainedExperience = Int(Double(item.rarity.cubeExperience) * max(0.0, multiplier))
         totalExperience += gainedExperience
         infusedItemCount += 1
         return gainedExperience

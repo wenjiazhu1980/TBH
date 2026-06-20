@@ -135,6 +135,42 @@ enum ChestFamily: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+struct AutoOpenChestCooldowns: Codable, Equatable {
+    var normalMonsterRemaining: TimeInterval
+    var stageBossRemaining: TimeInterval
+    var actBossRemaining: TimeInterval
+
+    init(
+        normalMonsterRemaining: TimeInterval = 0,
+        stageBossRemaining: TimeInterval = 0,
+        actBossRemaining: TimeInterval = 0
+    ) {
+        self.normalMonsterRemaining = max(0, normalMonsterRemaining)
+        self.stageBossRemaining = max(0, stageBossRemaining)
+        self.actBossRemaining = max(0, actBossRemaining)
+    }
+
+    func remaining(for family: ChestFamily) -> TimeInterval {
+        switch family {
+        case .normalMonster: return normalMonsterRemaining
+        case .stageBoss: return stageBossRemaining
+        case .actBoss: return actBossRemaining
+        }
+    }
+
+    mutating func setRemaining(_ seconds: TimeInterval, for family: ChestFamily) {
+        let normalizedSeconds = max(0, seconds)
+        switch family {
+        case .normalMonster:
+            normalMonsterRemaining = normalizedSeconds
+        case .stageBoss:
+            stageBossRemaining = normalizedSeconds
+        case .actBoss:
+            actBossRemaining = normalizedSeconds
+        }
+    }
+}
+
 struct ChestCatalogEntry: Equatable {
     let family: ChestFamily
     let stageLevelFloor: Int?
@@ -379,6 +415,32 @@ struct ChestStorageLimits: Equatable {
     }
 }
 
+struct ChestDropBonuses: Equatable {
+    static let none = ChestDropBonuses(normalMonsterChance: 0, stageBossChance: 0)
+
+    let normalMonsterChance: Double
+    let stageBossChance: Double
+
+    func chance(for family: ChestFamily) -> Double {
+        switch family {
+        case .normalMonster:
+            return max(0, normalMonsterChance)
+        case .stageBoss:
+            return max(0, stageBossChance)
+        case .actBoss:
+            return 0
+        }
+    }
+
+    func extraDropCount(for family: ChestFamily, roll: () -> Double = { Double.random(in: 0..<1) }) -> Int {
+        let chance = chance(for: family)
+        guard chance > 0 else { return 0 }
+        let guaranteedCount = Int(chance)
+        let fractionalChance = chance - Double(guaranteedCount)
+        return guaranteedCount + (roll() < fractionalChance ? 1 : 0)
+    }
+}
+
 struct ChestInventory: Codable, Equatable {
     private(set) var chests: [LootChest] = []
 
@@ -452,6 +514,200 @@ struct StageMonsterSpawn: Equatable {
     let isStageLeader: Bool
 }
 
+enum StageMonsterArtFidelity: String, CaseIterable, Equatable {
+    case extractedStageSprite
+    case genericOfficialSprite
+    case typeNearApproximation
+}
+
+struct StageMonsterArtMapping: Identifiable, Equatable {
+    let sourceName: String
+    let runtimeMonsterID: String
+    let sampleStageCode: String
+    let sampleDifficulty: Difficulty
+    let isStageLeader: Bool
+    let fidelity: StageMonsterArtFidelity
+
+    var id: String { sourceName }
+}
+
+struct SourceMonsterDatabaseEntry: Identifiable, Equatable {
+    let id: Int
+    let zhName: String
+    let enName: String
+    let hp: Int
+    let attack: Int
+    let attackSpeed: Double
+    let gold: Int
+    let xp: Int
+    let bestFarm: String
+}
+
+enum SourceMonsterDatabase {
+    static let zhSourceURL = "https://taskbarhero.org/zh/monsters/"
+    static let enSourceURL = "https://taskbarhero.org/en/monsters/"
+    static let sourceBoundaryText = "taskbarhero.org Wiki/datamined 61 行怪物数据库；数值可能随平衡补丁调整"
+    static let runtimeBoundaryText = "运行时怪物基础 ATK/攻速标量取自该表；自动循环按战斗步进量化；HP/金币/经验仍以关卡运行表为准；源表单张 sprite 只作资源证据；不声明关卡出场、动作帧或完整怪物技能已还原；不绘制新怪物图"
+    static let sourceOnlySpriteIDs: Set<Int> = [20_042, 20_121, 30_044]
+
+    static let entries: [SourceMonsterDatabaseEntry] = [
+        .init(id: 10011, zhName: "史莱姆", enName: "Slime", hp: 50, attack: 10, attackSpeed: 0.4, gold: 10, xp: 10, bestFarm: "4101 · 174/clear · 牧场"),
+        .init(id: 10021, zhName: "哥布林", enName: "Goblin", hp: 35, attack: 15, attackSpeed: 0.5, gold: 12, xp: 12, bestFarm: "4101 · 174/clear · 牧场"),
+        .init(id: 10022, zhName: "哥布林盗贼", enName: "Goblin Thief", hp: 45, attack: 10, attackSpeed: 1.1, gold: 15, xp: 15, bestFarm: "4101 · 174/clear · 牧场"),
+        .init(id: 10023, zhName: "哥布林萨满", enName: "Goblin Shaman", hp: 30, attack: 18, attackSpeed: 0.7, gold: 20, xp: 20, bestFarm: "4102 · 130/clear · 阴影草原"),
+        .init(id: 10031, zhName: "蝙蝠", enName: "Bat", hp: 15, attack: 10, attackSpeed: 0.9, gold: 10, xp: 5, bestFarm: "4107 · 204/clear · 城市外围"),
+        .init(id: 10041, zhName: "兽人", enName: "Orc", hp: 65, attack: 14, attackSpeed: 0.8, gold: 15, xp: 15, bestFarm: "4106 · 145/clear · 朗姆街广场"),
+        .init(id: 10042, zhName: "兽人战士", enName: "Orc Warrior", hp: 95, attack: 16, attackSpeed: 0.75, gold: 20, xp: 20, bestFarm: "4106 · 145/clear · 朗姆街广场"),
+        .init(id: 10043, zhName: "精英兽人", enName: "Elite Orc", hp: 185, attack: 17, attackSpeed: 0.65, gold: 35, xp: 35, bestFarm: "4106 · 87/clear · 朗姆街广场"),
+        .init(id: 10051, zhName: "骷髅", enName: "Skeleton", hp: 50, attack: 20, attackSpeed: 0.8, gold: 10, xp: 11, bestFarm: "4107 · 204/clear · 城市外围"),
+        .init(id: 10052, zhName: "骷髅弓箭手", enName: "Skeleton Archer", hp: 35, attack: 20, attackSpeed: 0.8, gold: 10, xp: 13, bestFarm: "4107 · 143/clear · 城市外围"),
+        .init(id: 10053, zhName: "骷髅战士", enName: "Skeleton Warrior", hp: 90, attack: 20, attackSpeed: 0.8, gold: 30, xp: 30, bestFarm: "4108 · 86/clear · 公墓"),
+        .init(id: 10901, zhName: "骷髅王", enName: "Skeleton King", hp: 1_050, attack: 50, attackSpeed: 1.15, gold: 500, xp: 36, bestFarm: "1110 · 1/clear · 黑暗王座"),
+        .init(id: 10902, zhName: "骷髅王", enName: "Skeleton King", hp: 2_350, attack: 70, attackSpeed: 1.3, gold: 500, xp: 12, bestFarm: "2110 · 1/clear · 黑暗王座"),
+        .init(id: 10903, zhName: "骷髅王", enName: "Skeleton King", hp: 2_350, attack: 70, attackSpeed: 1.3, gold: 500, xp: 18, bestFarm: "3110 · 1/clear · 黑暗王座"),
+        .init(id: 10904, zhName: "骷髅王", enName: "Skeleton King", hp: 2_350, attack: 70, attackSpeed: 1.3, gold: 500, xp: 15, bestFarm: "4110 · 1/clear · 黑暗王座"),
+        .init(id: 20011, zhName: "蝎子", enName: "Scorpion", hp: 50, attack: 10, attackSpeed: 0.4, gold: 10, xp: 10, bestFarm: "4201 · 190/clear · 绿洲路"),
+        .init(id: 20021, zhName: "鼠族战士", enName: "Ratfolk Warrior", hp: 35, attack: 15, attackSpeed: 0.5, gold: 12, xp: 12, bestFarm: "4201 · 190/clear · 绿洲路"),
+        .init(id: 20022, zhName: "鼠族弓手", enName: "Ratfolk Archer", hp: 45, attack: 10, attackSpeed: 1.1, gold: 15, xp: 15, bestFarm: "4201 · 190/clear · 绿洲路"),
+        .init(id: 20023, zhName: "瘟疫鼠", enName: "Plague Rat", hp: 110, attack: 20, attackSpeed: 0.7, gold: 20, xp: 20, bestFarm: "4203 · 133/clear · 沙漠地下洞窟"),
+        .init(id: 20024, zhName: "鼠族狂战士", enName: "Ratfolk Berserker", hp: 75, attack: 17, attackSpeed: 1.5, gold: 25, xp: 25, bestFarm: "4202 · 142/clear · 沙风暴谷"),
+        .init(id: 20031, zhName: "眼镜蛇", enName: "Cobra", hp: 55, attack: 18, attackSpeed: 1.15, gold: 15, xp: 15, bestFarm: "4206 · 142/clear · 夕阳废墟"),
+        .init(id: 20041, zhName: "毒虫", enName: "Venom Insect", hp: 45, attack: 23, attackSpeed: 1.3, gold: 15, xp: 15, bestFarm: "4203 · 133/clear · 沙漠地下洞窟"),
+        .init(id: 20042, zhName: "剧毒领主", enName: "Venom Lord", hp: 75, attack: 15, attackSpeed: 0.55, gold: 35, xp: 35, bestFarm: "4207 · 74/clear · 午夜沙漠"),
+        .init(id: 20051, zhName: "巨蝇", enName: "Giant Fly", hp: 45, attack: 20, attackSpeed: 1.2, gold: 11, xp: 11, bestFarm: "4205 · 228/clear · 炽热沙丘"),
+        .init(id: 20061, zhName: "狗头人卫兵", enName: "Kobold Guard", hp: 90, attack: 20, attackSpeed: 0.8, gold: 17, xp: 17, bestFarm: "4206 · 142/clear · 夕阳废墟"),
+        .init(id: 20062, zhName: "狗头人投石手", enName: "Kobold Slinger", hp: 80, attack: 23, attackSpeed: 1.1, gold: 14, xp: 14, bestFarm: "4208 · 120/clear · 神圣墓穴"),
+        .init(id: 20071, zhName: "人造人", enName: "Homunculus", hp: 115, attack: 16, attackSpeed: 0.8, gold: 13, xp: 13, bestFarm: "4207 · 148/clear · 午夜沙漠"),
+        .init(id: 20081, zhName: "食尸鬼", enName: "Ghoul", hp: 225, attack: 20, attackSpeed: 0.6, gold: 45, xp: 45, bestFarm: "4209 · 55/clear · 法老陵墓"),
+        .init(id: 20091, zhName: "火元素", enName: "Fire Elemental", hp: 75, attack: 25, attackSpeed: 0.8, gold: 23, xp: 23, bestFarm: "4208 · 120/clear · 神圣墓穴"),
+        .init(id: 20111, zhName: "木乃伊", enName: "Mummy", hp: 260, attack: 17, attackSpeed: 0.8, gold: 30, xp: 30, bestFarm: "4209 · 109/clear · 法老陵墓"),
+        .init(id: 20121, zhName: "扁虱", enName: "Tick", hp: 55, attack: 10, attackSpeed: 1.4, gold: 7, xp: 7, bestFarm: "—"),
+        .init(id: 20901, zhName: "沙漠的支配者", enName: "Desert Overlord", hp: 1_850, attack: 80, attackSpeed: 1.7, gold: 500, xp: 12, bestFarm: "1210 · 1/clear · 法老地下水道"),
+        .init(id: 20902, zhName: "沙漠的支配者", enName: "Desert Overlord", hp: 1_950, attack: 100, attackSpeed: 1.7, gold: 500, xp: 14, bestFarm: "2210 · 1/clear · 法老地下水道"),
+        .init(id: 20903, zhName: "沙漠的支配者", enName: "Desert Overlord", hp: 2_050, attack: 120, attackSpeed: 1.7, gold: 500, xp: 31, bestFarm: "3210 · 1/clear · 法老地下水道"),
+        .init(id: 20904, zhName: "沙漠的支配者", enName: "Desert Overlord", hp: 2_350, attack: 140, attackSpeed: 1.7, gold: 500, xp: 31, bestFarm: "4210 · 1/clear · 法老地下水道"),
+        .init(id: 30011, zhName: "小鬼", enName: "Gremlin", hp: 70, attack: 10, attackSpeed: 0.6, gold: 10, xp: 10, bestFarm: "4301 · 282/clear · 雪原前哨"),
+        .init(id: 30012, zhName: "地精灵", enName: "Geonid", hp: 50, attack: 15, attackSpeed: 0.9, gold: 12, xp: 12, bestFarm: "4301 · 197/clear · 雪原前哨"),
+        .init(id: 30013, zhName: "堕落天使的头盔", enName: "Fallen Angel's Helm", hp: 40, attack: 25, attackSpeed: 1.1, gold: 15, xp: 15, bestFarm: "4301 · 141/clear · 雪原前哨"),
+        .init(id: 30021, zhName: "雪人", enName: "Yeti", hp: 320, attack: 12, attackSpeed: 0.7, gold: 20, xp: 20, bestFarm: "4302 · 148/clear · 冰封战场"),
+        .init(id: 30031, zhName: "幼龙", enName: "Dragon Hatchling", hp: 175, attack: 30, attackSpeed: 0.7, gold: 10, xp: 5, bestFarm: "4305 · 119/clear · 地狱之门"),
+        .init(id: 30041, zhName: "雪山战士", enName: "Snow Mountain Warrior", hp: 90, attack: 15, attackSpeed: 0.7, gold: 10, xp: 5, bestFarm: "4302 · 148/clear · 冰封战场"),
+        .init(id: 30042, zhName: "雪山弓手", enName: "Snow Mountain Archer", hp: 70, attack: 20, attackSpeed: 1.3, gold: 10, xp: 5, bestFarm: "4303 · 99/clear · 冰川洞窟入口"),
+        .init(id: 30043, zhName: "雪山卫兵", enName: "Snow Mountain Guard", hp: 155, attack: 15, attackSpeed: 0.9, gold: 10, xp: 5, bestFarm: "4304 · 135/clear · 冰川洞窟深处"),
+        .init(id: 30044, zhName: "雪山法师", enName: "Snow Mountain Mage", hp: 55, attack: 25, attackSpeed: 1.0, gold: 10, xp: 5, bestFarm: "4303 · 70/clear · 冰川洞窟入口"),
+        .init(id: 30051, zhName: "幽灵", enName: "Ghost", hp: 65, attack: 10, attackSpeed: 1.8, gold: 15, xp: 15, bestFarm: "4304 · 135/clear · 冰川洞窟深处"),
+        .init(id: 30061, zhName: "熔岩人", enName: "Lava Being", hp: 75, attack: 20, attackSpeed: 0.75, gold: 20, xp: 20, bestFarm: "4306 · 138/clear · 燃烧峡谷"),
+        .init(id: 30071, zhName: "血之祭司", enName: "Blood Priest", hp: 125, attack: 16, attackSpeed: 0.65, gold: 35, xp: 35, bestFarm: "4307 · 136/clear · 痛苦平原"),
+        .init(id: 30081, zhName: "恶魔士兵", enName: "Demon Soldier", hp: 70, attack: 20, attackSpeed: 0.8, gold: 10, xp: 11, bestFarm: "4307 · 136/clear · 痛苦平原"),
+        .init(id: 30082, zhName: "恶魔军团长", enName: "Demon Legion Commander", hp: 45, attack: 20, attackSpeed: 0.8, gold: 10, xp: 13, bestFarm: "4307 · 95/clear · 痛苦平原"),
+        .init(id: 30083, zhName: "恶魔突击兵", enName: "Demon Shocktrooper", hp: 90, attack: 20, attackSpeed: 0.8, gold: 30, xp: 30, bestFarm: "4308 · 125/clear · 毁灭要塞"),
+        .init(id: 30084, zhName: "燃烧小猪", enName: "Burning Piglet", hp: 110, attack: 30, attackSpeed: 0.8, gold: 30, xp: 30, bestFarm: "2309 · 91/clear · 深渊之核"),
+        .init(id: 30091, zhName: "地狱魔像", enName: "Hell Golem", hp: 185, attack: 40, attackSpeed: 0.6, gold: 30, xp: 30, bestFarm: "4306 · 138/clear · 燃烧峡谷"),
+        .init(id: 30101, zhName: "燃烧的地狱祭司", enName: "Burning Hell Priest", hp: 95, attack: 30, attackSpeed: 1.0, gold: 30, xp: 30, bestFarm: "4308 · 125/clear · 毁灭要塞"),
+        .init(id: 30102, zhName: "冰冻的地狱祭司", enName: "Frozen Hell Priest", hp: 95, attack: 30, attackSpeed: 1.0, gold: 30, xp: 30, bestFarm: "4303 · 141/clear · 冰川洞窟入口"),
+        .init(id: 30103, zhName: "电流的地狱祭司", enName: "Electric Hell Priest", hp: 95, attack: 30, attackSpeed: 1.0, gold: 30, xp: 30, bestFarm: "4306 · 138/clear · 燃烧峡谷"),
+        .init(id: 30104, zhName: "混沌的地狱祭司", enName: "Chaos Hell Priest", hp: 75, attack: 30, attackSpeed: 1.0, gold: 30, xp: 30, bestFarm: "4307 · 136/clear · 痛苦平原"),
+        .init(id: 30111, zhName: "死亡之指", enName: "Finger of Death", hp: 65, attack: 25, attackSpeed: 1.6, gold: 30, xp: 30, bestFarm: "4309 · 125/clear · 深渊之核"),
+        .init(id: 30901, zhName: "执政官莫尔卡", enName: "Archon Morkar", hp: 2_550, attack: 70, attackSpeed: 1.3, gold: 500, xp: 1, bestFarm: "1310 · 1/clear · 地狱指挥室"),
+        .init(id: 30902, zhName: "执政官莫尔卡", enName: "Archon Morkar", hp: 2_750, attack: 80, attackSpeed: 1.5, gold: 500, xp: 1, bestFarm: "2310 · 1/clear · 地狱指挥室"),
+        .init(id: 30903, zhName: "执政官莫尔卡", enName: "Archon Morkar", hp: 3_050, attack: 90, attackSpeed: 1.5, gold: 500, xp: 1, bestFarm: "3310 · 1/clear · 地狱指挥室"),
+        .init(id: 30904, zhName: "执政官莫尔卡", enName: "Archon Morkar", hp: 3_550, attack: 100, attackSpeed: 1.5, gold: 500, xp: 1, bestFarm: "4310 · 1/clear · 地狱指挥室")
+    ]
+
+    static var rowCount: Int {
+        entries.count
+    }
+
+    static var uniqueIDCount: Int {
+        Set(entries.map(\.id)).count
+    }
+
+    static var uniqueNameCount: Int {
+        Set(entries.map(\.zhName)).count
+    }
+
+    static var idsAreUnique: Bool {
+        uniqueIDCount == rowCount
+    }
+
+    static var missingBestFarmCount: Int {
+        entries.filter { $0.bestFarm == "—" }.count
+    }
+
+    static var sourceOnlySpriteEntries: [SourceMonsterDatabaseEntry] {
+        entries.filter { sourceOnlySpriteIDs.contains($0.id) }
+    }
+
+    static var sourceOnlySpriteResourceNames: [String] {
+        sourceOnlySpriteEntries.compactMap(sourceOnlySpriteResourceName(for:))
+    }
+
+    static func sourceOnlySpriteResourceName(for entry: SourceMonsterDatabaseEntry) -> String? {
+        guard sourceOnlySpriteIDs.contains(entry.id) else { return nil }
+        return "source_monster_\(entry.id)"
+    }
+
+    static func entry(id: Int) -> SourceMonsterDatabaseEntry? {
+        entries.first { $0.id == id }
+    }
+
+    static func entry(zhName: String, stageCode: String? = nil) -> SourceMonsterDatabaseEntry? {
+        if let stageCode,
+           let sourceID = bossSourceID(zhName: zhName, stageCode: stageCode),
+           let row = entry(id: sourceID) {
+            return row
+        }
+        return entries.first { $0.zhName == zhName }
+    }
+
+    static func runtimeSpeed(fromAttackSpeed attackSpeed: Double) -> Int {
+        max(1, Int((attackSpeed * 10.0).rounded()))
+    }
+
+    static func sourceCooldownSeconds(fromAttackSpeed attackSpeed: Double) -> TimeInterval {
+        10.0 / Double(runtimeSpeed(fromAttackSpeed: attackSpeed))
+    }
+
+    static func localLoopCooldownSeconds(fromAttackSpeed attackSpeed: Double) -> TimeInterval {
+        let boundedInterval = max(
+            GamePacing.minimumAttackInterval,
+            sourceCooldownSeconds(fromAttackSpeed: attackSpeed)
+        )
+        let simulationStep = max(0.01, GamePacing.combatSimulationStep)
+        return ceil(boundedInterval / simulationStep) * simulationStep
+    }
+
+    static var stageCompositionNameCoverageCount: Int {
+        let sourceNames = Set(entries.map(\.zhName))
+        let compositionNames = Set(StageDefinition.stageMonsterArtMappings.map(\.sourceName))
+        return compositionNames.intersection(sourceNames).count
+    }
+
+    static var stageCompositionMissingNames: [String] {
+        let sourceNames = Set(entries.map(\.zhName))
+        return Set(StageDefinition.stageMonsterArtMappings.map(\.sourceName))
+            .subtracting(sourceNames)
+            .sorted()
+    }
+
+    private static func bossSourceID(zhName: String, stageCode: String) -> Int? {
+        guard ["骷髅王", "沙漠的支配者", "执政官莫尔卡"].contains(zhName),
+              let difficultyDigit = stageCode.first?.wholeNumberValue,
+              stageCode.count >= 4 else {
+            return nil
+        }
+
+        let actCharacter = stageCode[stageCode.index(after: stageCode.startIndex)]
+        guard let actDigit = actCharacter.wholeNumberValue,
+              (1...3).contains(actDigit),
+              (1...4).contains(difficultyDigit) else {
+            return nil
+        }
+
+        return actDigit * 10_000 + 900 + difficultyDigit
+    }
+}
+
 struct StageEncounterState: Equatable {
     let encounterIndex: Int
     let encounterNumber: Int
@@ -494,8 +750,12 @@ struct StageDefinition: Identifiable, Codable, Equatable {
     var clearTarget: Int { clearTarget(for: .normal) }
 
     func clearTarget(for difficulty: Difficulty) -> Int {
+        clearTarget(for: difficulty, clearTargetReduction: 0)
+    }
+
+    func clearTarget(for difficulty: Difficulty, clearTargetReduction: Int) -> Int {
         let killsRequired = runtimeData(for: difficulty).killsRequired
-        return isBoss ? 1 : max(1, killsRequired)
+        return isBoss ? 1 : max(1, killsRequired - max(0, clearTargetReduction))
     }
 
     func runtimeData(for difficulty: Difficulty) -> StageRuntimeData {
@@ -524,24 +784,40 @@ struct StageDefinition: Identifiable, Codable, Equatable {
         isBoss ? SoulStoneKind(difficulty: difficulty) : nil
     }
 
-    func chestSources(for difficulty: Difficulty) -> [LootChest] {
+    private func chestSource(for difficulty: Difficulty, family: ChestFamily) -> LootChest {
         let runtime = runtimeData(for: difficulty)
-        let families: [ChestFamily] = isBoss ? [.normalMonster, .actBoss] : [.normalMonster, .stageBoss]
-
-        return families.map { family in
-            LootChest(
-                kind: ChestKind(difficulty: difficulty),
-                itemLevel: itemLevelCap(for: difficulty),
-                sourceStageCode: displayCode,
-                sourceDifficulty: difficulty,
-                family: family,
-                catalogLevel: ChestCatalog.catalogLevel(for: runtime.level, family: family)
-            )
-        }
+        return LootChest(
+            kind: ChestKind(difficulty: difficulty),
+            itemLevel: itemLevelCap(for: difficulty),
+            sourceStageCode: displayCode,
+            sourceDifficulty: difficulty,
+            family: family,
+            catalogLevel: ChestCatalog.catalogLevel(for: runtime.level, family: family)
+        )
     }
 
-    func chestRewards(for difficulty: Difficulty) -> [LootChest] {
-        chestSources(for: difficulty)
+    func chestSources(for difficulty: Difficulty) -> [LootChest] {
+        let families: [ChestFamily] = isBoss ? [.normalMonster, .actBoss] : [.normalMonster, .stageBoss]
+
+        return families.map { chestSource(for: difficulty, family: $0) }
+    }
+
+    func chestRewards(
+        for difficulty: Difficulty,
+        chestDropBonuses: ChestDropBonuses = .none,
+        roll: () -> Double = { Double.random(in: 0..<1) }
+    ) -> [LootChest] {
+        var rewards = chestSources(for: difficulty)
+        let bonusFamilies: [ChestFamily] = isBoss ? [.normalMonster] : [.normalMonster, .stageBoss]
+
+        for family in bonusFamilies {
+            let extraCount = chestDropBonuses.extraDropCount(for: family, roll: roll)
+            for _ in 0..<extraCount {
+                rewards.append(chestSource(for: difficulty, family: family))
+            }
+        }
+
+        return rewards
     }
 
     func chestReward(for difficulty: Difficulty) -> LootChest? {
@@ -588,9 +864,13 @@ struct StageDefinition: Identifiable, Codable, Equatable {
     }
 
     func encounterPlan(for difficulty: Difficulty) -> StageEncounterPlan {
-        let target = clearTarget(for: difficulty)
+        encounterPlan(for: difficulty, clearTargetReduction: 0)
+    }
+
+    func encounterPlan(for difficulty: Difficulty, clearTargetReduction: Int) -> StageEncounterPlan {
+        let target = clearTarget(for: difficulty, clearTargetReduction: clearTargetReduction)
         let encounters = (0..<target).map {
-            encounterState(for: difficulty, encounterIndex: $0)
+            encounterState(for: difficulty, encounterIndex: $0, clearTargetReduction: clearTargetReduction)
         }
         return StageEncounterPlan(
             difficulty: difficulty,
@@ -601,8 +881,12 @@ struct StageDefinition: Identifiable, Codable, Equatable {
     }
 
     func encounterState(for difficulty: Difficulty, encounterIndex: Int) -> StageEncounterState {
+        encounterState(for: difficulty, encounterIndex: encounterIndex, clearTargetReduction: 0)
+    }
+
+    func encounterState(for difficulty: Difficulty, encounterIndex: Int, clearTargetReduction: Int) -> StageEncounterState {
         let data = runtimeData(for: difficulty)
-        let target = clearTarget(for: difficulty)
+        let target = clearTarget(for: difficulty, clearTargetReduction: clearTargetReduction)
         let clampedTarget = max(target, 1)
         let clampedIndex = min(max(0, encounterIndex), clampedTarget - 1)
         let waveCount = isBoss ? 1 : max(data.waves, 1)
@@ -715,6 +999,10 @@ struct StageDefinition: Identifiable, Codable, Equatable {
     }
 
     static var runtimeDataCount: Int { runtimeDataByCode.count }
+
+    static func runtimeData(sourceCode: String) -> StageRuntimeData? {
+        runtimeDataByCode[sourceCode]
+    }
 
     private static let runtimeDataByCode: [String: StageRuntimeData] = {
         var result: [String: StageRuntimeData] = [:]
@@ -1048,7 +1336,10 @@ struct StageDefinition: Identifiable, Codable, Equatable {
         let data = runtimeData(for: difficulty)
         let spawn = monsterSpawn(for: difficulty, encounterIndex: encounterIndex)
         let monsterName = spawn.name
-        let base = monsterProfile(named: monsterName)
+        let base = Self.monsterProfile(named: monsterName)
+        let sourceMonster = SourceMonsterDatabase.entry(zhName: monsterName, stageCode: data.code)
+        let sourceBaseAttack = sourceMonster?.attack ?? base.atk
+        let sourceRuntimeSpeed = sourceMonster.map { SourceMonsterDatabase.runtimeSpeed(fromAttackSpeed: $0.attackSpeed) } ?? base.spd
         let levelScale = 1.0 + Double(max(data.level - 1, 0)) * 0.08
         let enemyMultiplier = NewGamePlusTuning.enemyStatMultiplier(for: playthrough)
         let rewardMultiplier = NewGamePlusTuning.rewardMultiplier(for: playthrough)
@@ -1057,15 +1348,15 @@ struct StageDefinition: Identifiable, Codable, Equatable {
             id: isBoss ? "boss_\(id)" : base.id,
             name: monsterName,
             hp: max(1, Int(Double(data.hp) * enemyMultiplier)),
-            atk: max(1, Int(Double(base.atk) * difficulty.statMultiplier * levelScale * (isBoss ? 1.45 : 1.0) * enemyMultiplier)),
+            atk: max(1, Int(Double(sourceBaseAttack) * difficulty.statMultiplier * levelScale * (isBoss ? 1.45 : 1.0) * enemyMultiplier)),
             def: max(0, Int(Double(base.def) * difficulty.statMultiplier * levelScale * (isBoss ? 1.35 : 1.0) * enemyMultiplier)),
-            spd: base.spd,
+            spd: sourceRuntimeSpeed,
             critRate: base.critRate,
             xpReward: max(1, Int(Double(data.xpReward) * rewardMultiplier)),
             goldReward: max(1, Int(Double(data.goldReward) * rewardMultiplier)),
             lootTableID: base.lootTableID,
             itemLevelCap: itemLevelCap(for: difficulty),
-            sourceSkillID: sourceSkillID(forMonsterNamed: monsterName) ?? base.sourceSkillID
+            sourceSkillID: SourceSkillCatalog.sourceSkillID(forMonsterNamed: monsterName) ?? base.sourceSkillID
         )
     }
 
@@ -1085,7 +1376,80 @@ struct StageDefinition: Identifiable, Codable, Equatable {
         }
     }
 
-    private func monsterProfile(named name: String) -> Monster {
+    private static let extractedStageSpriteMonsterNames: Set<String> = [
+        "哥布林盗贼",
+        "哥布林萨满",
+        "兽人",
+        "兽人战士",
+        "精英兽人",
+        "骷髅",
+        "骷髅战士",
+        "骷髅弓箭手",
+        "骷髅王",
+        "鼠族狂战士",
+        "鼠族战士",
+        "眼镜蛇",
+        "毒虫",
+        "人造人",
+        "食尸鬼",
+        "瘟疫鼠",
+        "狗头人卫兵",
+        "木乃伊",
+        "沙漠的支配者",
+        "执政官莫尔卡"
+    ]
+
+    private static let genericOfficialSpriteMonsterNames: Set<String> = [
+        "史莱姆",
+        "哥布林",
+        "蝙蝠"
+    ]
+
+    static var stageMonsterArtMappings: [StageMonsterArtMapping] {
+        var seen = Set<String>()
+        var mappings: [StageMonsterArtMapping] = []
+
+        for difficulty in Difficulty.allCases {
+            for stage in all {
+                let runtime = stage.runtimeData(for: difficulty)
+                for spawn in runtime.monsterComposition where !seen.contains(spawn.name) {
+                    seen.insert(spawn.name)
+                    let runtimeMonsterID = stage.runtimeMonsterID(for: spawn)
+                    mappings.append(
+                        StageMonsterArtMapping(
+                            sourceName: spawn.name,
+                            runtimeMonsterID: runtimeMonsterID,
+                            sampleStageCode: runtime.code,
+                            sampleDifficulty: difficulty,
+                            isStageLeader: spawn.isStageLeader,
+                            fidelity: monsterArtFidelity(for: spawn.name)
+                        )
+                    )
+                }
+            }
+        }
+
+        return mappings
+    }
+
+    private func runtimeMonsterID(for spawn: StageMonsterSpawn) -> String {
+        if isBoss && spawn.isStageLeader {
+            return "boss_\(id)"
+        }
+        return Self.monsterProfile(named: spawn.name).id
+    }
+
+    private static func monsterArtFidelity(for name: String) -> StageMonsterArtFidelity {
+        if extractedStageSpriteMonsterNames.contains(name) {
+            return .extractedStageSprite
+        }
+        if genericOfficialSpriteMonsterNames.contains(name) {
+            return .genericOfficialSprite
+        }
+        return .typeNearApproximation
+    }
+
+    private static func monsterProfile(named name: String) -> Monster {
         switch name {
         case "史莱姆":
             return Monster(id: "slime_green", name: name, hp: 50, atk: 8, def: 3, spd: 5, critRate: 0.02, xpReward: 15, goldReward: 10, lootTableID: "slime_drops")
@@ -1153,18 +1517,4 @@ struct StageDefinition: Identifiable, Codable, Equatable {
         return Monster.allMonsters.first { $0.id == "slime_green" } ?? Monster.allMonsters[0]
     }
 
-    private func sourceSkillID(forMonsterNamed name: String) -> String? {
-        switch name {
-        case "燃烧的地狱祭司":
-            return "301015"
-        case "冰冻的地狱祭司":
-            return "301025"
-        case "电流的地狱祭司":
-            return "301035"
-        case "混沌的地狱祭司":
-            return "301045"
-        default:
-            return nil
-        }
-    }
 }

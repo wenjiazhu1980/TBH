@@ -323,6 +323,16 @@ enum SourceItemCatalog {
         uniqueKeysWithValues: allStageChests.map { ($0.id, $0) }
     )
 
+    static let progressionByID: [String: SourceGearLevelProgression] = {
+        var progressions: [String: SourceGearLevelProgression] = [:]
+        for gearType in allGearTypes {
+            for progression in gearType.progressions {
+                progressions[progression.id] = progression
+            }
+        }
+        return progressions
+    }()
+
     static var totalGearEntryCount: Int {
         allGearTypes.reduce(0) { $0 + $1.gearEntryCount }
     }
@@ -384,6 +394,10 @@ enum SourceItemCatalog {
 
     static func progression(for equipmentType: EquipmentType, itemLevel: Int) -> SourceGearLevelProgression? {
         byType[equipmentType]?.progression(for: itemLevel)
+    }
+
+    static func progression(id: String) -> SourceGearLevelProgression? {
+        progressionByID[id]
     }
 
     private static func parseSourceGearTypeTSV() -> [SourceGearTypeEntry] {
@@ -724,6 +738,7 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
     let slot: EquipSlot?
     let equipmentType: EquipmentType?
     let itemLevel: Int
+    let sourceGearID: String?
     let stats: ItemStats
     let description: String
     let isLocked: Bool
@@ -737,7 +752,8 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
         description: String,
         itemLevel: Int = 1,
         isLocked: Bool = false,
-        equipmentType: EquipmentType? = nil
+        equipmentType: EquipmentType? = nil,
+        sourceGearID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -748,6 +764,7 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
         self.slot = resolvedType?.equipSlot ?? (slot == .accessory ? .ring : slot)
         self.equipmentType = resolvedType
         self.itemLevel = max(1, itemLevel)
+        self.sourceGearID = sourceGearID
         self.stats = stats
         self.description = description
         self.isLocked = isLocked
@@ -769,12 +786,13 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
             description: description,
             itemLevel: itemLevel,
             isLocked: isLocked,
-            equipmentType: equipmentType
+            equipmentType: equipmentType,
+            sourceGearID: sourceGearID
         )
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, rarity, slot, equipmentType, itemLevel, stats, description, isLocked
+        case id, name, rarity, slot, equipmentType, itemLevel, sourceGearID, stats, description, isLocked
     }
 
     init(from decoder: Decoder) throws {
@@ -796,13 +814,30 @@ struct Item: Identifiable, Codable, Equatable, Hashable {
             1,
             try c.decodeIfPresent(Int.self, forKey: .itemLevel) ?? Self.inferItemLevel(from: decodedDescription)
         )
+        sourceGearID = try c.decodeIfPresent(String.self, forKey: .sourceGearID)
+            ?? Self.inferSourceGearID(from: decodedDescription)
         isLocked = try c.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+    }
+
+    var sourceGearProgression: SourceGearLevelProgression? {
+        if let sourceGearID, let progression = SourceItemCatalog.progression(id: sourceGearID) {
+            return progression
+        }
+        guard let equipmentType else { return nil }
+        return SourceItemCatalog.progression(for: equipmentType, itemLevel: itemLevel)
     }
 
     private static func inferItemLevel(from description: String) -> Int {
         guard description.hasPrefix("Lv.") else { return 1 }
         let digits = description.dropFirst(3).prefix { $0.isNumber }
         return Int(digits) ?? 1
+    }
+
+    private static func inferSourceGearID(from description: String) -> String? {
+        guard let range = description.range(of: "来源装备 ") else { return nil }
+        let suffix = description[range.upperBound...]
+        let digits = suffix.prefix { $0.isNumber }
+        return digits.isEmpty ? nil : String(digits)
     }
 }
 
@@ -824,6 +859,20 @@ struct ItemStats: Codable, Equatable, Hashable {
     }
 }
 
+struct SourceSynthesisSkipExample: Identifiable, Equatable {
+    let from: Rarity
+    let to: Rarity
+    let chanceText: String
+
+    var id: String {
+        "\(from.rawValue)-\(to.rawValue)-\(chanceText)"
+    }
+
+    var displayText: String {
+        "\(from.rawValue) -> \(to.rawValue) \(chanceText)"
+    }
+}
+
 struct SynthesisPreview: Equatable {
     let inputRarity: Rarity
     let outputRarity: Rarity?
@@ -832,6 +881,7 @@ struct SynthesisPreview: Equatable {
     let selectedInputCount: Int
     let outputItemLevel: Int?
     let outputSourceProgression: SourceGearLevelProgression?
+    let sourceResultExample: SourceSynthesisSkipExample?
 
     var isReady: Bool {
         outputRarity != nil && selectedInputCount == Rarity.synthesisInputCount
@@ -863,7 +913,8 @@ struct SynthesisPreview: Equatable {
             lockedInputCount: lockedInputCount,
             selectedInputCount: selectedInputs.count,
             outputItemLevel: outputLevel,
-            outputSourceProgression: outputProgression
+            outputSourceProgression: outputProgression,
+            sourceResultExample: rarity.sourceSynthesisSkipExample
         )
     }
 
@@ -892,8 +943,21 @@ extension Item {
 extension Rarity {
     static let synthesisInputCount = 9
 
+    static var sourceSynthesisSkipExamples: [SourceSynthesisSkipExample] {
+        [
+            SourceSynthesisSkipExample(from: .common, to: .rare, chanceText: "~60%"),
+            SourceSynthesisSkipExample(from: .uncommon, to: .legendary, chanceText: "~40%"),
+            SourceSynthesisSkipExample(from: .rare, to: .legendary, chanceText: "~20%"),
+            SourceSynthesisSkipExample(from: .legendary, to: .immortal, chanceText: "~5%")
+        ]
+    }
+
     var rank: Int {
         Self.allCases.firstIndex(of: self) ?? 0
+    }
+
+    var sourceSynthesisSkipExample: SourceSynthesisSkipExample? {
+        Self.sourceSynthesisSkipExamples.first { $0.from == self }
     }
 
     var synthesisOutputRarity: Rarity? {

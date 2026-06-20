@@ -142,7 +142,8 @@ struct LootTable {
             stats: stats,
             description: "Lv.\(itemLevel) \(rarity.rawValue)品质的\(type.typeLine)\(sourceIDLine)",
             itemLevel: itemLevel,
-            equipmentType: type
+            equipmentType: type,
+            sourceGearID: sourceProgression?.id
         )
     }
 

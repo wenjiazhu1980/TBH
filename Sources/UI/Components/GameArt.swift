@@ -134,6 +134,10 @@ enum GameArt {
     }
 
     static func itemIconName(for item: Item) -> String {
+        if let progression = item.sourceGearProgression {
+            return progression.iconName
+        }
+
         if let equipmentType = item.equipmentType {
             return SourceItemCatalog.progression(
                 for: equipmentType,

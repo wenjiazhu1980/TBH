@@ -4,6 +4,7 @@ import Foundation
 
 private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
     var isEnabled = true
+    var isMutedByInterface = true
 
     func play(_ event: GameAudioEvent) {}
 }
@@ -47,10 +48,11 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 @Suite struct GameEngineEquipTests {
     private final class RecordingAudio: GameAudioPlaying {
         var isEnabled = true
+        var isMutedByInterface = true
         var events: [GameAudioEvent] = []
 
         func play(_ event: GameAudioEvent) {
-            guard isEnabled else { return }
+            guard isEnabled, !isMutedByInterface else { return }
             events.append(event)
         }
     }
@@ -176,6 +178,18 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.inventory.items.contains(locked))
         #expect(engine.cubeProgress.totalExperience == Rarity.rare.cubeExperience)
         #expect(engine.cubeProgress.infusedItemCount == 1)
+
+        let boosted = Item(id: "cube3", name: "强化 Cube 材料", rarity: .rare, slot: nil, stats: ItemStats(), description: "")
+        engine.inventory.add(boosted)
+        engine.hero.gainXP(1_000)
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost1))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost2))
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost2))
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost3))
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost4))
+        let boostedCubeXP = Int(Double(Rarity.rare.cubeExperience) * (1.0 + RuneTree.cubeRewardMultiplierBonus * 4.0))
+        #expect(engine.infuseItemIntoCube(boosted) == boostedCubeXP)
+        #expect(engine.cubeProgress.totalExperience == Rarity.rare.cubeExperience + boostedCubeXP)
     }
 
     @Test func alchemyConsumesUnlockedItemsAndProtectsLockedItems() {
@@ -194,6 +208,19 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(!engine.inventory.items.contains(unlocked))
         #expect(engine.inventory.items.contains(locked))
         #expect(engine.hero.gold == goldBeforeAlchemy + Rarity.rare.alchemyGoldValue)
+
+        let boosted = Item(id: "alchemy3", name: "强化炼金材料", rarity: .rare, slot: nil, stats: ItemStats(), description: "")
+        engine.inventory.add(boosted)
+        engine.hero.gainXP(1_000)
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost1))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost1))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost2))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost3))
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost4))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost4))
+        let boostedAlchemyGold = Int(Double(Rarity.rare.alchemyGoldValue) * (1.0 + RuneTree.cubeRewardMultiplierBonus * 4.0))
+        #expect(engine.alchemizeItem(boosted) == boostedAlchemyGold)
+        #expect(engine.hero.gold == goldBeforeAlchemy + Rarity.rare.alchemyGoldValue + boostedAlchemyGold)
     }
 
     @Test func synthesisConsumesNineUnlockedSameRarityItemsAndProtectsLockedItems() throws {
@@ -229,6 +256,8 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(output.equipmentType == .sword)
         #expect(output.itemLevel == 12)
         #expect(output.name == "Rapier")
+        #expect(output.sourceGearID == "300003")
+        #expect(output.sourceGearProgression == SourceGearLevelProgression(id: "300003", itemLevel: 10, name: "Rapier"))
         #expect(output.description.contains("来源装备 300003"))
         #expect(engine.inventory.items.count == 2)
         #expect(engine.inventory.items.contains(locked))
@@ -313,10 +342,17 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
         engine.inventory.remove(weakLoot)
         engine.setWorseEquipmentHandling(.alchemize)
+        engine.hero.gainXP(1_000)
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost1))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost1))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost2))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost3))
+        #expect(engine.unlockRuneTreeNode(.cubeXPBoost4))
+        #expect(engine.unlockRuneTreeNode(.alchemyGoldBoost4))
         let goldBeforeAlchemy = engine.hero.gold
         #expect(engine.retainLootForTesting(weakLoot))
         #expect(!engine.inventory.items.contains(weakLoot))
-        #expect(engine.hero.gold == goldBeforeAlchemy + Rarity.uncommon.alchemyGoldValue)
+        #expect(engine.hero.gold == goldBeforeAlchemy + Int(Double(Rarity.uncommon.alchemyGoldValue) * (1.0 + RuneTree.cubeRewardMultiplierBonus * 4.0)))
 
         engine.setWorseEquipmentHandling(.discard)
         let goldBeforeDiscard = engine.hero.gold
@@ -338,12 +374,16 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
     }
 
     @Test func offlineRewardsRequireRuneOfRepose() {
-        func makeManager(name: String, runeTree: RuneTree) -> SaveManager {
+        func makeManager(
+            name: String,
+            hero: Hero = Hero(),
+            runeTree: RuneTree
+        ) -> SaveManager {
             let tempDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("TBHTests-\(name)-\(UUID().uuidString)", isDirectory: true)
             let manager = SaveManager(directory: tempDir)
             manager.save(SaveData(
-                hero: Hero(),
+                hero: hero,
                 runeTree: runeTree,
                 inventory: Inventory(),
                 progress: ProgressTracker(),
@@ -376,14 +416,31 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         let boosted = GameEngine(
             saveManager: makeManager(
                 name: "offline-boosted",
-                runeTree: RuneTree(unlockedNodes: [.offlineRewards, .offlineGoldBoost, .offlineXPBoost])
+                runeTree: RuneTree(unlockedNodes: Set([.offlineRewards] + RuneTree.offlineGoldBoostNodes + RuneTree.offlineXPBoostNodes))
             ),
             audio: RecordingAudio()
         )
         boosted.start()
         boosted.stop()
-        #expect(boosted.statistics.offlineXP > unlocked.statistics.offlineXP)
+        #expect(boosted.statistics.offlineXP >= unlocked.statistics.offlineXP)
         #expect(boosted.statistics.offlineGold > unlocked.statistics.offlineGold)
+
+        let cappedHero = Hero()
+        cappedHero.level = HeroLevelPacing.maxHeroLevel(for: ProgressTracker())
+        cappedHero.currentXP = cappedHero.xpForNextLevel() - 1
+        let capped = GameEngine(
+            saveManager: makeManager(
+                name: "offline-xp-capped",
+                hero: cappedHero,
+                runeTree: RuneTree(unlockedNodes: Set([.offlineRewards] + RuneTree.offlineXPBoostNodes))
+            ),
+            audio: RecordingAudio()
+        )
+        capped.start()
+        capped.stop()
+        #expect(capped.statistics.offlineXP == 0)
+        #expect(capped.statistics.offlineGold > 0)
+        #expect(capped.hero.currentXP == cappedHero.xpForNextLevel() - 1)
     }
 
     @Test func overleveledSaveIsClampedToCurrentProgressOnLoad() {
@@ -412,6 +469,22 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.hero.level == maxLevel)
         #expect(engine.hero.currentXP < engine.hero.xpForNextLevel())
         #expect(engine.hero.currentHP <= engine.hero.maxHP)
+    }
+
+    @Test func victoryRewardPreviewUsesAppliedXPPacingWithoutMutatingHero() {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TBHTests-reward-preview-\(UUID().uuidString)", isDirectory: true)
+        let engine = GameEngine(saveManager: SaveManager(directory: tempDir), audio: RecordingAudio())
+        let startXP = engine.hero.currentXP
+
+        let displayedRewards = engine.previewVictoryRewards(
+            BattleResult.Rewards(xp: 100, gold: 100, lootItem: nil)
+        )
+
+        #expect(displayedRewards.xp == 35)
+        #expect(displayedRewards.gold == 100)
+        #expect(engine.hero.currentXP == startXP)
+        #expect(engine.hero.level == 1)
     }
 
     @Test func offlineXPCannotExceedCurrentProgressLevelCap() {
@@ -595,9 +668,228 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.unlockRuneTreeNode(.activeSkillSlot2))
         #expect(engine.runeTree.activeSkillSlotCount == 2)
         #expect(engine.currentBattle?.activeSkillSlotCount == 2)
+        let attackBeforeWarRune = engine.hero.attack
+        let supportAttackBeforeWarRune = engine.party.supportAttackPower(heroLevel: engine.hero.level)
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamage1))
+        #expect(engine.hero.attack == attackBeforeWarRune + RuneTree.allHeroAttackDamageBonus)
+        #expect(engine.party.supportAttackPower(heroLevel: engine.hero.level, allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage) >= supportAttackBeforeWarRune)
+        let defenseBeforeShieldRune = engine.hero.defense
+        let supportDefenseBeforeShieldRune = engine.party.supportMembers.first?.supportDefense(heroLevel: engine.hero.level) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroArmor1))
+        #expect(engine.hero.defense == defenseBeforeShieldRune + RuneTree.allHeroArmorBonus)
+        #expect((engine.party.supportMembers.first?.supportDefense(heroLevel: engine.hero.level, allHeroArmorBonus: engine.runeTree.allHeroArmor) ?? 0) == supportDefenseBeforeShieldRune + RuneTree.allHeroArmorBonus)
+        let speedBeforeGaleRune = engine.hero.speed
+        let supportSpeedBeforeGaleRune = engine.party.supportMembers.first?.supportSpeed() ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroMoveSpeed1))
+        #expect(engine.hero.speed == speedBeforeGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        #expect((engine.party.supportMembers.first?.supportSpeed(allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed) ?? 0) == supportSpeedBeforeGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        let defenseBeforeThirdShieldRune = engine.hero.defense
+        let supportDefenseBeforeThirdShieldRune = engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroArmor3))
+        #expect(engine.runeTree.allHeroArmor == RuneTree.allHeroArmorBonus * 2)
+        #expect(engine.hero.defense > defenseBeforeThirdShieldRune)
+        #expect((engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0) >= supportDefenseBeforeThirdShieldRune)
+        #expect(engine.currentBattle?.allHeroArmorBonus == engine.runeTree.allHeroArmor)
+        let attackBeforeFourthWarRune = engine.hero.attack
+        let supportAttackBeforeFourthWarRune = engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        )
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamage4))
+        #expect(engine.runeTree.allHeroAttackDamage == RuneTree.allHeroAttackDamageBonus * 2)
+        #expect(engine.hero.attack > attackBeforeFourthWarRune)
+        #expect(engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        ) >= supportAttackBeforeFourthWarRune)
+        #expect(engine.currentBattle?.allHeroAttackDamageBonus == engine.runeTree.allHeroAttackDamage)
+        let speedBeforeFourthGaleRune = engine.hero.speed
+        let supportSpeedBeforeFourthGaleRune = engine.party.supportMembers.first?.supportSpeed(
+            allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroMoveSpeed4))
+        #expect(engine.hero.speed == speedBeforeFourthGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        #expect((engine.party.supportMembers.first?.supportSpeed(allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed) ?? 0) == supportSpeedBeforeFourthGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        let attackBeforeWarPercentRune = engine.hero.attack
+        let supportAttackBeforeWarPercentRune = engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage
+        )
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamagePercent1))
+        #expect(engine.hero.attack == Int(ceil(Double(attackBeforeWarPercentRune) * (1.0 + RuneTree.allHeroAttackDamageMultiplierBonus))))
+        #expect(engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        ) >= supportAttackBeforeWarPercentRune)
+        #expect(engine.currentBattle?.allHeroAttackDamageMultiplier == engine.runeTree.allHeroAttackDamageMultiplier)
+        let speedBeforeFifthGaleRune = engine.hero.speed
+        let supportSpeedBeforeFifthGaleRune = engine.party.supportMembers.first?.supportSpeed(
+            allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroMoveSpeed5))
+        #expect(engine.hero.speed == speedBeforeFifthGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        #expect((engine.party.supportMembers.first?.supportSpeed(allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed) ?? 0) == supportSpeedBeforeFifthGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        let defenseBeforeShieldPercentRune = engine.hero.defense
+        let supportDefenseBeforeShieldPercentRune = engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroArmorPercent1))
+        #expect(engine.hero.defense == Int(ceil(Double(defenseBeforeShieldPercentRune) * (1.0 + RuneTree.allHeroArmorMultiplierBonus))))
+        #expect((engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0) >= supportDefenseBeforeShieldPercentRune)
+        #expect(engine.currentBattle?.allHeroArmorMultiplier == engine.runeTree.allHeroArmorMultiplier)
+        let attackBeforeSecondWarPercentRune = engine.hero.attack
+        let supportAttackBeforeSecondWarPercentRune = engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        )
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamagePercent2))
+        #expect(engine.runeTree.allHeroAttackDamageMultiplier == 1.0 + RuneTree.allHeroAttackDamageMultiplierBonus * 2.0)
+        #expect(engine.hero.attack > attackBeforeSecondWarPercentRune)
+        #expect(engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        ) >= supportAttackBeforeSecondWarPercentRune)
+        #expect(engine.currentBattle?.allHeroAttackDamageMultiplier == engine.runeTree.allHeroAttackDamageMultiplier)
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackSpeed1))
+        #expect(engine.runeTree.allHeroAttackSpeedMultiplier == 1.0 + RuneTree.allHeroAttackSpeedMultiplierBonus)
+        #expect(engine.currentBattle?.allHeroAttackSpeedMultiplier == engine.runeTree.allHeroAttackSpeedMultiplier)
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackSpeed2))
+        #expect(engine.runeTree.allHeroAttackSpeedMultiplier == 1.0 + RuneTree.allHeroAttackSpeedMultiplierBonus * 2.0)
+        #expect(engine.currentBattle?.allHeroAttackSpeedMultiplier == engine.runeTree.allHeroAttackSpeedMultiplier)
+        let defenseBeforeSecondShieldRune = engine.hero.defense
+        let supportDefenseBeforeSecondShieldRune = engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroArmor2))
+        #expect(engine.runeTree.allHeroArmor == RuneTree.allHeroArmorBonus * 3)
+        #expect(engine.hero.defense > defenseBeforeSecondShieldRune)
+        #expect((engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0) >= supportDefenseBeforeSecondShieldRune)
+        #expect(engine.currentBattle?.allHeroArmorBonus == engine.runeTree.allHeroArmor)
+        let attackBeforeSecondWarRune = engine.hero.attack
+        let supportAttackBeforeSecondWarRune = engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        )
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamage2))
+        #expect(engine.runeTree.allHeroAttackDamage == RuneTree.allHeroAttackDamageBonus * 3)
+        #expect(engine.hero.attack > attackBeforeSecondWarRune)
+        #expect(engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        ) >= supportAttackBeforeSecondWarRune)
+        #expect(engine.currentBattle?.allHeroAttackDamageBonus == engine.runeTree.allHeroAttackDamage)
+        let attackBeforeThirdWarRune = engine.hero.attack
+        let supportAttackBeforeThirdWarRune = engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        )
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamage3))
+        #expect(engine.runeTree.allHeroAttackDamage == RuneTree.allHeroAttackDamageBonus * 4)
+        #expect(engine.hero.attack > attackBeforeThirdWarRune)
+        #expect(engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        ) >= supportAttackBeforeThirdWarRune)
+        #expect(engine.currentBattle?.allHeroAttackDamageBonus == engine.runeTree.allHeroAttackDamage)
+        let speedBeforeSecondGaleRune = engine.hero.speed
+        let supportSpeedBeforeSecondGaleRune = engine.party.supportMembers.first?.supportSpeed(
+            allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroMoveSpeed2))
+        #expect(engine.hero.speed == speedBeforeSecondGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        #expect((engine.party.supportMembers.first?.supportSpeed(allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed) ?? 0) == supportSpeedBeforeSecondGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        let speedBeforeThirdGaleRune = engine.hero.speed
+        let supportSpeedBeforeThirdGaleRune = engine.party.supportMembers.first?.supportSpeed(
+            allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroMoveSpeed3))
+        #expect(engine.hero.speed == speedBeforeThirdGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        #expect((engine.party.supportMembers.first?.supportSpeed(allHeroMoveSpeedBonus: engine.runeTree.allHeroMoveSpeed) ?? 0) == supportSpeedBeforeThirdGaleRune + RuneTree.allHeroMoveSpeedBonus)
+        let defenseBeforeSecondShieldPercentRune = engine.hero.defense
+        let supportDefenseBeforeSecondShieldPercentRune = engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0
+        #expect(engine.unlockRuneTreeNode(.allHeroArmorPercent2))
+        #expect(engine.runeTree.allHeroArmorMultiplier == 1.0 + RuneTree.allHeroArmorMultiplierBonus * 2.0)
+        #expect(engine.hero.defense > defenseBeforeSecondShieldPercentRune)
+        #expect((engine.party.supportMembers.first?.supportDefense(
+            heroLevel: engine.hero.level,
+            allHeroArmorBonus: engine.runeTree.allHeroArmor,
+            allHeroArmorMultiplier: engine.runeTree.allHeroArmorMultiplier
+        ) ?? 0) >= supportDefenseBeforeSecondShieldPercentRune)
+        #expect(engine.currentBattle?.allHeroArmorMultiplier == engine.runeTree.allHeroArmorMultiplier)
+        let attackBeforeThirdWarPercentRune = engine.hero.attack
+        let supportAttackBeforeThirdWarPercentRune = engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        )
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackDamagePercent3))
+        #expect(engine.runeTree.allHeroAttackDamageMultiplier == 1.0 + RuneTree.allHeroAttackDamageMultiplierBonus * 3.0)
+        #expect(engine.hero.attack > attackBeforeThirdWarPercentRune)
+        #expect(engine.party.supportAttackPower(
+            heroLevel: engine.hero.level,
+            allHeroAttackDamageBonus: engine.runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: engine.runeTree.allHeroAttackDamageMultiplier
+        ) >= supportAttackBeforeThirdWarPercentRune)
+        #expect(engine.currentBattle?.allHeroAttackDamageMultiplier == engine.runeTree.allHeroAttackDamageMultiplier)
+        #expect(engine.unlockRuneTreeNode(.allHeroAttackSpeed3))
+        #expect(engine.runeTree.allHeroAttackSpeedMultiplier == 1.0 + RuneTree.allHeroAttackSpeedMultiplierBonus * 3.0)
+        #expect(engine.currentBattle?.allHeroAttackSpeedMultiplier == engine.runeTree.allHeroAttackSpeedMultiplier)
         #expect(engine.inventory.maxCapacity == Inventory.baseCapacity)
         #expect(engine.unlockRuneTreeNode(.inventoryExpansion1))
         #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus)
+        #expect(engine.unlockRuneTreeNode(.inventoryExpansion2))
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus * 2)
+        var unlockedRemainingInventoryExpansions = true
+        for node in RuneTree.inventoryExpansionNodes.dropFirst(2) {
+            unlockedRemainingInventoryExpansions = engine.unlockRuneTreeNode(node) && unlockedRemainingInventoryExpansions
+        }
+        #expect(unlockedRemainingInventoryExpansions)
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus * RuneTree.inventoryExpansionNodes.count)
+        #expect(engine.unlockRuneTreeNode(.stashPage1))
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus * RuneTree.inventoryExpansionNodes.count + RuneTree.stashPageSlotBonus)
+        #expect(engine.unlockRuneTreeNode(.stashPage2))
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus * RuneTree.inventoryExpansionNodes.count + RuneTree.stashPageSlotBonus * 2)
+        #expect(engine.unlockRuneTreeNode(.stashPage3))
+        #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus * RuneTree.inventoryExpansionNodes.count + RuneTree.stashPageSlotBonus * 3)
+        engine.progress.restartCurrentStage()
+        let battleBeforeBrevity = engine.currentBattle
+        let baseClearTargetBeforeBrevity = engine.progress.currentStage.clearTarget(for: engine.progress.currentDifficulty)
+        #expect(engine.unlockRuneTreeNode(.waveCountReduction1))
+        #expect(engine.runeTree.stageClearTargetReduction == RuneTree.stageClearTargetReductionBonus)
+        #expect(engine.progress.currentEncounterPlan(clearTargetReduction: engine.runeTree.stageClearTargetReduction).clearTarget == baseClearTargetBeforeBrevity - RuneTree.stageClearTargetReductionBonus)
+        #expect(battleBeforeBrevity.map { before in engine.currentBattle.map { before !== $0 } ?? false } ?? false)
         engine.setPartyMember(slotIndex: 1, heroClass: .sorcerer)
         engine.resetRuneTree()
         engine.stop()
@@ -606,6 +898,11 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(engine.runeTree.unlockedNodes.isEmpty)
         #expect(engine.runeTree.unlockedPartySlotCount == 1)
         #expect(engine.runeTree.activeSkillSlotCount == 1)
+        #expect(engine.hero.runeAttackDamageBonus == 0)
+        #expect(engine.hero.runeAttackDamageMultiplier == 1.0)
+        #expect(engine.hero.runeArmorBonus == 0)
+        #expect(engine.hero.runeArmorMultiplier == 1.0)
+        #expect(engine.hero.runeMoveSpeedBonus == 0)
         #expect(engine.inventory.maxCapacity == Inventory.baseCapacity)
         #expect(engine.party.activeCount == 1)
         #expect(engine.currentBattle?.party.activeCount == 1)
@@ -754,6 +1051,11 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
         #expect(engine.unlockRuneTreeNode(.autoOpenNormalChests))
         #expect(engine.runeTree.canAutoOpenNormalChests)
+        #expect(engine.autoOpenChestCooldowns.remaining(for: .normalMonster) == RuneTree.normalChestAutoOpenBaseCooldown)
+        #expect(engine.progress.chests.totalCount == 2)
+        #expect(engine.progress.soulStones.count(for: .normal) == 0)
+
+        #expect(engine.runSelfTestAutoOpenCooldown(seconds: RuneTree.normalChestAutoOpenBaseCooldown) == 1)
         #expect(engine.progress.chests.totalCount == 1)
         #expect(engine.progress.chests.chests.first?.family == .stageBoss)
         #expect(engine.progress.soulStones.count(for: .normal) == 1)
@@ -770,6 +1072,10 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
         #expect(engine.unlockRuneTreeNode(.autoOpenStageBossChests))
         #expect(engine.runeTree.canAutoOpenStageBossChests)
+        #expect(engine.autoOpenChestCooldowns.remaining(for: .stageBoss) == RuneTree.stageBossChestAutoOpenBaseCooldown)
+        #expect(engine.progress.chests.totalCount == 3)
+
+        #expect(engine.runSelfTestAutoOpenCooldown(seconds: RuneTree.stageBossChestAutoOpenBaseCooldown) == 1)
         #expect(engine.progress.chests.totalCount == 2)
         #expect(engine.progress.chests.chests.filter { $0.family == .normalMonster }.count == 1)
         #expect(engine.progress.chests.chests.filter { $0.family == .stageBoss }.isEmpty)
@@ -788,6 +1094,10 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
 
         #expect(engine.unlockRuneTreeNode(.autoOpenActBossChests))
         #expect(engine.runeTree.canAutoOpenActBossChests)
+        #expect(engine.autoOpenChestCooldowns.remaining(for: .actBoss) == RuneTree.actBossChestAutoOpenBaseCooldown)
+        #expect(engine.progress.chests.totalCount == 3)
+
+        #expect(engine.runSelfTestAutoOpenCooldown(seconds: RuneTree.actBossChestAutoOpenBaseCooldown) == 1)
         #expect(engine.progress.chests.totalCount == 2)
         #expect(engine.progress.chests.chests.filter { $0.family == .normalMonster }.count == 1)
         #expect(engine.progress.chests.chests.filter { $0.family == .stageBoss }.count == 1)
@@ -817,6 +1127,11 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         _ = cubeProgress.infuse(Item(id: "cube", name: "Cube 材料", rarity: .rare, slot: nil, stats: ItemStats(), description: ""))
         var activeSkillLoadouts = ActiveSkillLoadouts()
         activeSkillLoadouts.setSkill("40301", for: .priest, slotIndex: 0)
+        let autoOpenCooldowns = AutoOpenChestCooldowns(
+            normalMonsterRemaining: 123,
+            stageBossRemaining: 456,
+            actBossRemaining: 12
+        )
         let data = SaveData(
             hero: hero,
             party: HeroParty(primaryClass: .priest),
@@ -826,6 +1141,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
             inventory: Inventory(),
             progress: progress,
             statistics: GameStatistics(),
+            autoOpenChestCooldowns: autoOpenCooldowns,
             autoEquipBestItems: true,
             worseEquipmentHandling: .alchemize,
             soundEffectsEnabled: false,
@@ -846,6 +1162,7 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         #expect(loaded.cubeProgress.totalExperience == Rarity.rare.cubeExperience)
         #expect(loaded.cubeProgress.infusedItemCount == 1)
         #expect(loaded.activeSkillLoadouts.activeSkills(for: .priest, heroLevel: 1, slotCount: 1).map(\.id) == ["40301"])
+        #expect(loaded.autoOpenChestCooldowns == autoOpenCooldowns)
         #expect(loaded.autoEquipBestItems)
         #expect(loaded.worseEquipmentHandling == .alchemize)
         #expect(!loaded.soundEffectsEnabled)
@@ -858,5 +1175,6 @@ private final class SaveRoundTripRecordingAudio: GameAudioPlaying {
         engine.stop()
         #expect(engine.inventory.maxCapacity == Inventory.baseCapacity + RuneTree.inventoryExpansionSlotBonus)
         #expect(engine.worseEquipmentHandling == .alchemize)
+        #expect(engine.autoOpenChestCooldowns == autoOpenCooldowns)
     }
 }

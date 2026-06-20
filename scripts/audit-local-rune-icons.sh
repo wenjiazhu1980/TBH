@@ -51,8 +51,8 @@ if not enum_match:
     sys.exit(1)
 
 runtime_nodes = re.findall(r"^\s*case\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", enum_match.group("body"), re.M)
-if len(runtime_nodes) != 15:
-    issues.append(f"expected 15 runtime RuneTreeNode cases, got {len(runtime_nodes)}")
+if len(runtime_nodes) != 197:
+    issues.append(f"expected 197 runtime RuneTreeNode cases, got {len(runtime_nodes)}")
 
 source_id_match = re.search(
     r"var\s+sourceRuneID:\s*String\s*\{(?P<body>.*?)\n\s*\}",
@@ -128,9 +128,9 @@ for node, source_id in runtime_source_ids.items():
         continue
     runtime_mapped_icons[node] = f"source_rune_{source_node['icon']}"
 
-if len(set(runtime_mapped_icons.values())) != 14:
+if len(set(runtime_mapped_icons.values())) != 39:
     issues.append(
-        "current runtime Rune Tree nodes should use fourteen source icon families, got "
+        "current runtime Rune Tree nodes should use all thirty-nine source icon families, got "
         + str(sorted(set(runtime_mapped_icons.values())))
     )
 
@@ -152,22 +152,15 @@ runtime_unmodeled_icon_families = {
 runtime_unmodeled_only_icon_families = set(source_icon_families) - runtime_modeled_icon_families
 runtime_shared_icon_families = runtime_modeled_icon_families & runtime_unmodeled_icon_families
 
-if len(runtime_modeled_source_rows) != 15:
-    issues.append(f"expected 15 runtime-modeled source Rune Tree rows, got {len(runtime_modeled_source_rows)}")
-if len(runtime_unmodeled_source_rows) != 182:
-    issues.append(f"expected 182 data-only source Rune Tree rows, got {len(runtime_unmodeled_source_rows)}")
-if len(runtime_modeled_icon_families) != 14:
-    issues.append(f"expected 14 runtime-modeled Rune Tree icon families, got {len(runtime_modeled_icon_families)}")
-if len(runtime_unmodeled_only_icon_families) != 25:
-    issues.append(f"expected 25 unmodeled-only Rune Tree icon families, got {len(runtime_unmodeled_only_icon_families)}")
-if runtime_shared_icon_families != {
-    "MaxAmountActBossChest",
-    "MaxAmountNormalChest",
-    "MaxAmountStageBossChest",
-    "MaxInventorySlot",
-    "OfflineRewardExpPercent",
-    "OfflineRewardGoldPercent",
-}:
+if len(runtime_modeled_source_rows) != 197:
+    issues.append(f"expected 197 runtime-modeled source Rune Tree rows, got {len(runtime_modeled_source_rows)}")
+if len(runtime_unmodeled_source_rows) != 0:
+    issues.append(f"expected 0 data-only source Rune Tree rows, got {len(runtime_unmodeled_source_rows)}")
+if len(runtime_modeled_icon_families) != 39:
+    issues.append(f"expected 39 runtime-modeled Rune Tree icon families, got {len(runtime_modeled_icon_families)}")
+if len(runtime_unmodeled_only_icon_families) != 0:
+    issues.append(f"expected 0 unmodeled-only Rune Tree icon families, got {len(runtime_unmodeled_only_icon_families)}")
+if runtime_shared_icon_families:
     issues.append(
         "unexpected shared modeled/data-only Rune Tree icon families: "
         + ",".join(sorted(runtime_shared_icon_families))

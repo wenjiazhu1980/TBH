@@ -90,6 +90,11 @@ class Hero: ObservableObject, Codable {
     @Published var currentHP: Int = 100
     @Published var equipment: EquipmentLoadout = EquipmentLoadout()
     @Published var unlockedPassiveSkillIDs: Set<String> = []
+    @Published var runeAttackDamageBonus: Int = 0
+    @Published var runeAttackDamageMultiplier: Double = 1.0
+    @Published var runeArmorBonus: Int = 0
+    @Published var runeArmorMultiplier: Double = 1.0
+    @Published var runeMoveSpeedBonus: Int = 0
 
     var isAlive: Bool { currentHP > 0 }
 
@@ -105,17 +110,18 @@ class Hero: ObservableObject, Codable {
     }
 
     var attack: Int {
-        let baseValue = baseStats.atk + max(level - 1, 0) * 2 + equipment.bonusATK + passiveRuntimeEffects.passiveAttackDamage
-        return max(1, Int(ceil(Double(baseValue) * passiveRuntimeEffects.passiveAttackDamageMultiplier)))
+        let baseValue = baseStats.atk + max(level - 1, 0) * 2 + equipment.bonusATK + passiveRuntimeEffects.passiveAttackDamage + runeAttackDamageBonus
+        return max(1, Int(ceil(Double(baseValue) * passiveRuntimeEffects.passiveAttackDamageMultiplier * runeAttackDamageMultiplier)))
     }
 
     var defense: Int {
-        max(0, baseStats.def + max(level - 1, 0) + equipment.bonusDEF + passiveRuntimeEffects.passiveArmor)
+        let baseValue = baseStats.def + max(level - 1, 0) + equipment.bonusDEF + passiveRuntimeEffects.passiveArmor + runeArmorBonus
+        return max(0, Int(ceil(Double(baseValue) * runeArmorMultiplier)))
     }
 
     var speed: Int {
         let effects = passiveRuntimeEffects
-        let baseValue = baseStats.spd + equipment.bonusSPD + effects.passiveMovementSpeed
+        let baseValue = baseStats.spd + equipment.bonusSPD + effects.passiveMovementSpeed + runeMoveSpeedBonus
         return max(1, Int(ceil(Double(baseValue) * effects.passiveAttackSpeedMultiplier * effects.passiveMovementSpeedMultiplier)))
     }
 
@@ -178,15 +184,18 @@ class Hero: ObservableObject, Codable {
         currentHP = wasAtFullHealth ? maxHP : min(currentHP, maxHP)
     }
 
-    func clampLevel(to maxLevel: Int) {
+    @discardableResult
+    func clampLevel(to maxLevel: Int) -> Bool {
+        let oldLevel = level
+        let oldXP = currentXP
+        let oldHP = currentHP
         let cappedLevel = max(1, maxLevel)
-        if level > cappedLevel {
-            level = cappedLevel
-        }
+        level = min(max(level, 1), cappedLevel)
         currentXP = min(max(currentXP, 0), max(0, xpForNextLevel() - 1))
         if currentHP > 0 {
             currentHP = min(currentHP, maxHP)
         }
+        return oldLevel != level || oldXP != currentXP || oldHP != currentHP
     }
 
     // MARK: - Codable
@@ -224,22 +233,106 @@ class Hero: ObservableObject, Codable {
     }
 }
 
-enum HeroLevelPacing {
-    static let stageLevelBuffer = 5
-    static let playthroughLevelBonus = 20
+struct HeroLevelCapBreakdown: Equatable {
+    let stageLevel: Int
+    let stageLevelBuffer: Int
+    let completedPlaythroughCycles: Int
+    let playthroughBonusPerCycle: Int
 
-    static func maxHeroLevel(for progress: ProgressTracker) -> Int {
+    var playthroughBonus: Int {
+        completedPlaythroughCycles * playthroughBonusPerCycle
+    }
+
+    var maxLevel: Int {
+        max(1, stageLevel + stageLevelBuffer + playthroughBonus)
+    }
+
+    var formulaText: String {
+        "Lv.\(stageLevel) + \(stageLevelBuffer) + \(playthroughBonus) = Lv.\(maxLevel)"
+    }
+}
+
+struct HeroLevelCapStatus: Equatable {
+    let heroLevel: Int
+    let currentXP: Int
+    let breakdown: HeroLevelCapBreakdown
+
+    var maxLevel: Int {
+        breakdown.maxLevel
+    }
+
+    var maxCurrentXP: Int {
+        max(0, Hero.xpForNextLevel(at: maxLevel) - 1)
+    }
+
+    var needsNormalization: Bool {
+        heroLevel < 1 || heroLevel > maxLevel || currentXP < 0 || currentXP > maxCurrentXP
+    }
+
+    var isAtLevelCap: Bool {
+        !needsNormalization && heroLevel >= maxLevel
+    }
+
+    var canLevelUp: Bool {
+        !needsNormalization && heroLevel < maxLevel
+    }
+
+    var nextLevelXPRemaining: Int {
+        guard canLevelUp else { return 0 }
+        return max(0, Hero.xpForNextLevel(at: heroLevel) - currentXP)
+    }
+
+    var levelText: String {
+        "Lv.\(heroLevel)/\(maxLevel)"
+    }
+
+    var statusText: String {
+        if needsNormalization {
+            return "需修正"
+        }
+        return isAtLevelCap ? "已达上限" : "可升级"
+    }
+
+    var xpSpaceText: String {
+        if needsNormalization {
+            return "修正后重算"
+        }
+        return isAtLevelCap ? "升级停止" : "下级 \(nextLevelXPRemaining) XP"
+    }
+}
+
+enum HeroLevelPacing {
+    static let stageLevelBuffer = GamePacing.stageLevelBuffer
+    static let playthroughLevelBonus = GamePacing.playthroughLevelBonus
+
+    static func levelCapBreakdown(for progress: ProgressTracker) -> HeroLevelCapBreakdown {
         let stageLevel = progress.currentStage
             .runtimeData(for: progress.currentDifficulty)
             .level
-        let playthroughBonus = NewGamePlusTuning.completedCycles(before: progress.playthrough) * playthroughLevelBonus
-        return max(1, stageLevel + stageLevelBuffer + playthroughBonus)
+        let completedPlaythroughCycles = NewGamePlusTuning.completedCycles(before: progress.playthrough)
+        return HeroLevelCapBreakdown(
+            stageLevel: stageLevel,
+            stageLevelBuffer: stageLevelBuffer,
+            completedPlaythroughCycles: completedPlaythroughCycles,
+            playthroughBonusPerCycle: playthroughLevelBonus
+        )
+    }
+
+    static func maxHeroLevel(for progress: ProgressTracker) -> Int {
+        levelCapBreakdown(for: progress).maxLevel
+    }
+
+    static func levelCapStatus(for hero: Hero, progress: ProgressTracker) -> HeroLevelCapStatus {
+        HeroLevelCapStatus(
+            heroLevel: hero.level,
+            currentXP: hero.currentXP,
+            breakdown: levelCapBreakdown(for: progress)
+        )
     }
 
     @discardableResult
     static func grantXP(_ amount: Int, to hero: Hero, maxLevel: Int) -> Int {
-        let requestedXP = max(0, amount)
-        let grantableXP = min(requestedXP, maxGrantableXP(for: hero, maxLevel: maxLevel))
+        let grantableXP = previewGrantedXP(amount, for: hero, maxLevel: maxLevel)
         guard grantableXP > 0 else {
             hero.clampLevel(to: maxLevel)
             return 0
@@ -248,6 +341,11 @@ enum HeroLevelPacing {
         hero.gainXP(grantableXP)
         hero.clampLevel(to: maxLevel)
         return grantableXP
+    }
+
+    static func previewGrantedXP(_ amount: Int, for hero: Hero, maxLevel: Int) -> Int {
+        let requestedXP = GamePacing.pacedXP(from: amount)
+        return min(requestedXP, maxGrantableXP(for: hero, maxLevel: maxLevel))
     }
 
     private static func maxGrantableXP(for hero: Hero, maxLevel: Int) -> Int {

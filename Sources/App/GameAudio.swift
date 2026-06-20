@@ -19,6 +19,7 @@ enum GameAudioEvent: String, CaseIterable {
 
 protocol GameAudioPlaying: AnyObject {
     var isEnabled: Bool { get set }
+    var isMutedByInterface: Bool { get set }
     func play(_ event: GameAudioEvent)
 }
 
@@ -26,6 +27,7 @@ final class GameAudio: ObservableObject, GameAudioPlaying {
     static let shared = GameAudio()
 
     @Published var isEnabled: Bool = true
+    @Published var isMutedByInterface: Bool = true
 
     private var sounds: [GameAudioEvent: NSSound] = [:]
     private var lastPlayedAt: [GameAudioEvent: Date] = [:]
@@ -40,7 +42,7 @@ final class GameAudio: ObservableObject, GameAudioPlaying {
     }
 
     func play(_ event: GameAudioEvent) {
-        guard isEnabled else { return }
+        guard isEnabled, !isMutedByInterface else { return }
 
         let now = Date()
         if let lastPlayed = lastPlayedAt[event],

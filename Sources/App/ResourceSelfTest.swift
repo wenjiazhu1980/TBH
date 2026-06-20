@@ -63,6 +63,7 @@ enum ResourceSelfTest {
         let gearIcons = SourceItemCatalog.allGearTypes.flatMap { $0.progressions.map(\.iconName) }
         let materialIcons = SourceItemCatalog.allMaterials.map { GameArt.itemIconName(for: $0) }
         let chestIcons = SourceItemCatalog.allStageChests.map { GameArt.stageChestIconName(for: $0) }
+        let sourceOnlyMonsterSprites = SourceMonsterDatabase.sourceOnlySpriteResourceNames
 
         return uniqueResourceNames(
             requiredStaticSprites +
@@ -71,6 +72,7 @@ enum ResourceSelfTest {
                 gearIcons +
                 materialIcons +
                 chestIcons +
+                sourceOnlyMonsterSprites +
                 GameArt.skillIconNames +
                 GameArt.passiveSkillIconNames +
                 GameArt.runeTreeIconNames
@@ -212,6 +214,7 @@ enum ResourceSelfTest {
         var spriteIssues = validateAppIconAndBrandArt()
         spriteIssues += validateHeroSpriteMappings()
         spriteIssues += validateStageMonsterSpriteMappings()
+        spriteIssues += validateSourceMonsterSpriteResources()
         spriteIssues += validateItemSpriteMappings()
         spriteIssues += validateSkillIconMappings()
         spriteIssues += validatePassiveSkillIconMappings()
@@ -1169,6 +1172,73 @@ enum ResourceSelfTest {
                     message: "boss stages must map to their act boss sprites: \(sampleContexts(bossMismatchContexts))"
                 )
             )
+        }
+
+        return issues
+    }
+
+    private static func validateSourceMonsterSpriteResources() -> [SpriteIssue] {
+        var issues: [SpriteIssue] = []
+        let expectedSizes: [String: (width: Int, height: Int)] = [
+            "source_monster_20042": (32, 34),
+            "source_monster_20121": (22, 14),
+            "source_monster_30044": (19, 21)
+        ]
+        let expectedResourceNames = expectedSizes.keys.sorted()
+        let configuredResourceNames = SourceMonsterDatabase.sourceOnlySpriteResourceNames.sorted()
+
+        if configuredResourceNames != expectedResourceNames {
+            issues.append(
+                SpriteIssue(
+                    name: "SourceMonsterDatabase.sourceOnlySpriteResourceNames",
+                    message: "source-only monster sprite resources must stay \(expectedResourceNames.joined(separator: ",")), got \(configuredResourceNames.joined(separator: ","))"
+                )
+            )
+        }
+
+        for (resourceName, expectedSize) in expectedSizes.sorted(by: { $0.key < $1.key }) {
+            guard let pixels = decodedSpritePixels(named: resourceName) else {
+                issues.append(
+                    SpriteIssue(
+                        name: resourceName,
+                        message: "source-only monster sprite could not be decoded"
+                    )
+                )
+                continue
+            }
+
+            if pixels.width != expectedSize.width || pixels.height != expectedSize.height {
+                issues.append(
+                    SpriteIssue(
+                        name: resourceName,
+                        message: "source-only monster sprite must be \(expectedSize.width)x\(expectedSize.height), got \(pixels.width)x\(pixels.height)"
+                    )
+                )
+            }
+
+            let visiblePixels = pixels.pixels.filter { $0.alpha > 0 }
+            if visiblePixels.count < 8 {
+                issues.append(
+                    SpriteIssue(
+                        name: resourceName,
+                        message: "source-only monster sprite has too few visible pixels"
+                    )
+                )
+            }
+
+            let distinctVisibleColors = Set(
+                visiblePixels.map { pixel in
+                    (pixel.red << 16) | (pixel.green << 8) | pixel.blue
+                }
+            )
+            if distinctVisibleColors.count < 4 {
+                issues.append(
+                    SpriteIssue(
+                        name: resourceName,
+                        message: "source-only monster sprite lost expected visible color detail"
+                    )
+                )
+            }
         }
 
         return issues

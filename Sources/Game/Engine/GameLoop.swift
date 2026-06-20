@@ -15,6 +15,7 @@ class GameEngine: ObservableObject {
     @Published var inventory: Inventory
     @Published var progress: ProgressTracker
     @Published var statistics: GameStatistics
+    @Published private(set) var autoOpenChestCooldowns: AutoOpenChestCooldowns
     @Published private(set) var recentBattleLog: [BattleLogEntry]
     @Published var autoEquipBestItems: Bool
     @Published var worseEquipmentHandling: WorseEquipmentHandling
@@ -25,13 +26,14 @@ class GameEngine: ObservableObject {
     }
 
     private var tickTimer: Timer?
-    private let tickInterval: TimeInterval = 1.0
+    private let tickInterval: TimeInterval = GamePacing.runtimeTickInterval
     private let saveManager: SaveManager
     private let audio: GameAudioPlaying
     private var terminationObserver: NSObjectProtocol?
     private var unyieldingWillConsumedStageKey: String?
+    private var needsSaveAfterStartupNormalization = false
 
-    /// 每 30 个 tick（约 30 秒）自动保存一次
+    /// 每 30 个 tick（当前约 30 秒）自动保存一次
     private let autosaveTicks = 30
     private var ticksSinceLastSave = 0
     private let retainedBattleLogLimit = 300
@@ -47,6 +49,7 @@ class GameEngine: ObservableObject {
         self.inventory = Inventory()
         self.progress = ProgressTracker()
         self.statistics = GameStatistics()
+        self.autoOpenChestCooldowns = AutoOpenChestCooldowns()
         self.recentBattleLog = []
         self.autoEquipBestItems = false
         self.worseEquipmentHandling = .keep
@@ -54,6 +57,7 @@ class GameEngine: ObservableObject {
         self.saveManager = saveManager
         self.audio = audio
         self.audio.isEnabled = soundEffectsEnabled
+        self.audio.isMutedByInterface = true
     }
 
     deinit {
@@ -68,6 +72,7 @@ class GameEngine: ObservableObject {
     func start() {
         loadSave()
         calculateOfflineProgress()
+        saveAfterStartupNormalizationIfNeeded()
         startNextBattle()
         observeTermination()
         startTickTimer()
@@ -113,9 +118,10 @@ class GameEngine: ObservableObject {
         guard hero.isAlive else { return }
 
         let battleLogCountBeforeUpdate = currentBattle?.log.count ?? 0
-        currentBattle?.update(deltaTime: tickInterval)
+        updateCurrentBattle(deltaTime: GamePacing.simulatedCombatDelta(for: tickInterval))
         appendRecentBattleLog(from: currentBattle, startingAt: battleLogCountBeforeUpdate)
         statistics.totalPlayTime += tickInterval
+        tickAutoOpenChests(deltaTime: tickInterval)
 
         if let battle = currentBattle, battle.isOver {
             handleBattleResult(battle.result)
@@ -125,6 +131,19 @@ class GameEngine: ObservableObject {
             } else {
                 startNextBattle()
             }
+        }
+    }
+
+    private func updateCurrentBattle(deltaTime: TimeInterval) {
+        var remainingBattleTime = max(0, deltaTime)
+        let simulationStep = max(0.01, GamePacing.combatSimulationStep)
+
+        while remainingBattleTime > 0,
+              let battle = currentBattle,
+              !battle.isOver {
+            let step = min(simulationStep, remainingBattleTime)
+            battle.update(deltaTime: step)
+            remainingBattleTime -= step
         }
     }
 
@@ -144,8 +163,9 @@ class GameEngine: ObservableObject {
         }
 
         battleLockReason = nil
-        let encounter = progress.currentEncounterState
-        let waveEncounters = progress.currentEncounterPlan
+        let clearTargetReduction = runeTree.stageClearTargetReduction
+        let encounter = progress.currentEncounterState(clearTargetReduction: clearTargetReduction)
+        let waveEncounters = progress.currentEncounterPlan(clearTargetReduction: clearTargetReduction)
             .encounters(inWave: encounter.wave)
             .filter { $0.encounterIndex >= encounter.encounterIndex }
         let plannedEncounters = waveEncounters.isEmpty ? [encounter] : waveEncounters
@@ -163,6 +183,12 @@ class GameEngine: ObservableObject {
             party: party,
             activeSkillSlotCount: runeTree.activeSkillSlotCount,
             activeSkillLoadouts: activeSkillLoadouts,
+            allHeroAttackDamageBonus: runeTree.allHeroAttackDamage,
+            allHeroAttackDamageMultiplier: runeTree.allHeroAttackDamageMultiplier,
+            allHeroArmorBonus: runeTree.allHeroArmor,
+            allHeroArmorMultiplier: runeTree.allHeroArmorMultiplier,
+            allHeroAttackSpeedMultiplier: runeTree.allHeroAttackSpeedMultiplier,
+            allHeroMoveSpeedBonus: runeTree.allHeroMoveSpeed,
             unyieldingWillAvailable: unyieldingWillConsumedStageKey != stageRevivalKey
         )
         battle.onUnyieldingWillUsed = { [weak self] in
@@ -193,29 +219,95 @@ class GameEngine: ObservableObject {
         case .victory(let rewards):
             let clearedStage = progress.currentStage
             let clearedDifficulty = progress.currentDifficulty
+            let rewardEncounterKind = combatRewardEncounterKind(
+                stage: clearedStage,
+                difficulty: clearedDifficulty,
+                startingEncounterIndex: progress.killsInChapter,
+                encountersCleared: rewards.encountersCleared
+            )
+            let earnedRewards = adjustedVictoryRewards(rewards, encounterKind: rewardEncounterKind)
             let oldLevel = hero.level
-            grantHeroXP(rewards.xp)
+            grantHeroXP(earnedRewards.xp)
             handleLevelGain(from: oldLevel)
-            hero.gainGold(rewards.gold)
+            hero.gainGold(earnedRewards.gold)
             // 背包满时战利品丢失；自动装备成功也视作已保留战利品。
             let lootStoredCount = retainLoot(rewards.lootItems)
             if lootStoredCount > 0 {
                 audio.play(.lootFound)
             }
-            _ = progress.advance(by: rewards.encountersCleared, chestStorageLimits: runeTree.chestStorageLimits)
+            _ = progress.advance(
+                by: rewards.encountersCleared,
+                chestStorageLimits: runeTree.chestStorageLimits,
+                clearTargetReduction: runeTree.stageClearTargetReduction,
+                chestDropBonuses: runeTree.chestDropBonuses
+            )
             statistics.recordVictory(
-                rewards: rewards,
+                rewards: earnedRewards,
                 lootStoredCount: lootStoredCount,
                 chapter: clearedStage.act,
                 difficulty: clearedDifficulty,
                 stage: clearedStage
             )
-            autoOpenEligibleChests()
 
         case .defeat:
             statistics.recordDefeat()
             hero.respawn()
         }
+    }
+
+    private func adjustedVictoryRewards(
+        _ rewards: BattleResult.Rewards,
+        encounterKind: CombatRewardEncounterKind
+    ) -> BattleResult.Rewards {
+        BattleResult.Rewards(
+            xp: Int(Double(rewards.xp) * runeTree.combatXPMultiplier(for: encounterKind)),
+            gold: Int(Double(rewards.gold) * runeTree.combatGoldMultiplier(for: encounterKind)),
+            lootItems: rewards.lootItems,
+            encountersCleared: rewards.encountersCleared
+        )
+    }
+
+    func previewVictoryRewards(_ rewards: BattleResult.Rewards) -> BattleResult.Rewards {
+        let rewardEncounterKind = combatRewardEncounterKind(
+            stage: progress.currentStage,
+            difficulty: progress.currentDifficulty,
+            startingEncounterIndex: progress.killsInChapter,
+            encountersCleared: rewards.encountersCleared
+        )
+        let adjustedRewards = adjustedVictoryRewards(rewards, encounterKind: rewardEncounterKind)
+        let appliedXP = HeroLevelPacing.previewGrantedXP(
+            adjustedRewards.xp,
+            for: hero,
+            maxLevel: HeroLevelPacing.maxHeroLevel(for: progress)
+        )
+        return BattleResult.Rewards(
+            xp: appliedXP,
+            gold: adjustedRewards.gold,
+            lootItems: adjustedRewards.lootItems,
+            encountersCleared: adjustedRewards.encountersCleared
+        )
+    }
+
+    private func combatRewardEncounterKind(
+        stage: StageDefinition,
+        difficulty: Difficulty,
+        startingEncounterIndex: Int,
+        encountersCleared: Int
+    ) -> CombatRewardEncounterKind {
+        if stage.isBoss {
+            return .actBoss
+        }
+
+        let clearTargetReduction = runeTree.stageClearTargetReduction
+        let clearedRange = 0..<max(1, encountersCleared)
+        let clearedAnyStageLeader = clearedRange.contains { offset in
+            stage.encounterState(
+                for: difficulty,
+                encounterIndex: startingEncounterIndex + offset,
+                clearTargetReduction: clearTargetReduction
+            ).monsterSpawn.isStageLeader
+        }
+        return clearedAnyStageLeader ? .stageBoss : .normalMonster
     }
 
     static func audioEvent(for event: BattleEvent) -> GameAudioEvent {
@@ -272,13 +364,17 @@ class GameEngine: ObservableObject {
         save()
     }
 
+    func setInterfaceAudioActive(_ active: Bool) {
+        audio.isMutedByInterface = !active
+    }
+
     @discardableResult
     func infuseItemIntoCube(_ item: Item) -> Int? {
         guard !item.isLocked else { return nil }
         guard inventory.items.contains(item) else { return nil }
 
         inventory.remove(item)
-        let gainedExperience = cubeProgress.infuse(item)
+        let gainedExperience = cubeProgress.infuse(item, multiplier: runeTree.cubeExperienceMultiplier)
         audio.play(.itemConsumed)
         save()
         return gainedExperience
@@ -290,7 +386,7 @@ class GameEngine: ObservableObject {
         guard inventory.items.contains(item) else { return nil }
 
         inventory.remove(item)
-        let gainedGold = item.rarity.alchemyGoldValue
+        let gainedGold = alchemyGold(for: item)
         hero.gainGold(gainedGold)
         audio.play(.itemConsumed)
         save()
@@ -404,7 +500,7 @@ class GameEngine: ObservableObject {
         guard runeTree.unlock(node, heroLevel: hero.level, availableGold: hero.gold) else { return false }
         hero.gold -= node.goldCost
         applyRuneTreeUnlocks()
-        autoOpenEligibleChests()
+        refreshAutoOpenCooldowns(afterUnlocking: node)
         startNextBattle()
         save()
         return true
@@ -441,6 +537,7 @@ class GameEngine: ObservableObject {
             hero.gainGold(refundGold)
         }
         applyRuneTreeUnlocks()
+        autoOpenChestCooldowns = AutoOpenChestCooldowns()
         startNextBattle()
         save()
     }
@@ -509,28 +606,75 @@ class GameEngine: ObservableObject {
     }
 
     @discardableResult
-    private func autoOpenEligibleChests() -> Int {
+    private func tickAutoOpenChests(deltaTime: TimeInterval) -> Int {
         var openedCount = 0
 
-        if runeTree.canAutoOpenNormalChests {
-            while openChest(family: .normalMonster) {
-                openedCount += 1
+        for family in ChestFamily.allCases {
+            guard isAutoOpenEnabled(for: family) else {
+                autoOpenChestCooldowns.setRemaining(0, for: family)
+                continue
             }
-        }
 
-        if runeTree.canAutoOpenStageBossChests {
-            while openChest(family: .stageBoss) {
-                openedCount += 1
+            let remaining = max(0, autoOpenChestCooldowns.remaining(for: family) - max(0, deltaTime))
+            guard remaining <= 0 else {
+                autoOpenChestCooldowns.setRemaining(remaining, for: family)
+                continue
             }
-        }
 
-        if runeTree.canAutoOpenActBossChests {
-            while openChest(family: .actBoss) {
+            autoOpenChestCooldowns.setRemaining(runeTree.autoOpenCooldown(for: family), for: family)
+            if openChest(family: family) {
                 openedCount += 1
+            } else {
+                autoOpenChestCooldowns.setRemaining(0, for: family)
             }
         }
 
         return openedCount
+    }
+
+    private func isAutoOpenEnabled(for family: ChestFamily) -> Bool {
+        switch family {
+        case .normalMonster:
+            return runeTree.canAutoOpenNormalChests
+        case .stageBoss:
+            return runeTree.canAutoOpenStageBossChests
+        case .actBoss:
+            return runeTree.canAutoOpenActBossChests
+        }
+    }
+
+    private func refreshAutoOpenCooldowns(afterUnlocking node: RuneTreeNode) {
+        switch node {
+        case .autoOpenNormalChests:
+            primeAutoOpenCooldown(for: .normalMonster)
+        case .autoOpenStageBossChests:
+            primeAutoOpenCooldown(for: .stageBoss)
+        case .autoOpenActBossChests:
+            primeAutoOpenCooldown(for: .actBoss)
+        case _ where RuneTree.normalChestAutoOpenSpeedNodes.contains(node):
+            clampAutoOpenCooldown(for: .normalMonster)
+        case _ where RuneTree.stageBossChestAutoOpenSpeedNodes.contains(node):
+            clampAutoOpenCooldown(for: .stageBoss)
+        case _ where RuneTree.actBossChestAutoOpenSpeedNodes.contains(node):
+            clampAutoOpenCooldown(for: .actBoss)
+        default:
+            break
+        }
+    }
+
+    private func primeAutoOpenCooldown(for family: ChestFamily) {
+        guard isAutoOpenEnabled(for: family) else { return }
+        let cooldown = runeTree.autoOpenCooldown(for: family)
+        let currentRemaining = autoOpenChestCooldowns.remaining(for: family)
+        autoOpenChestCooldowns.setRemaining(currentRemaining > 0 ? min(currentRemaining, cooldown) : cooldown, for: family)
+    }
+
+    private func clampAutoOpenCooldown(for family: ChestFamily) {
+        guard isAutoOpenEnabled(for: family) else { return }
+        let cooldown = runeTree.autoOpenCooldown(for: family)
+        let currentRemaining = autoOpenChestCooldowns.remaining(for: family)
+        guard currentRemaining > cooldown else { return }
+        autoOpenChestCooldowns.setRemaining(cooldown, for: family)
     }
 
     private func retainOpenedChest(_ chest: LootChest) {
@@ -589,12 +733,16 @@ class GameEngine: ObservableObject {
         case .keep:
             return false
         case .alchemize:
-            hero.gainGold(item.rarity.alchemyGoldValue)
+            hero.gainGold(alchemyGold(for: item))
             audio.play(.itemConsumed)
             return true
         case .discard:
             return true
         }
+    }
+
+    private func alchemyGold(for item: Item) -> Int {
+        Int(Double(item.rarity.alchemyGoldValue) * runeTree.alchemyGoldMultiplier)
     }
 
     // MARK: - Offline Progress
@@ -616,10 +764,10 @@ class GameEngine: ObservableObject {
         )
 
         let oldLevel = hero.level
-        _ = grantHeroXP(rewards.xp)
+        let appliedXP = grantHeroXP(rewards.xp)
         handleLevelGain(from: oldLevel)
         hero.gainGold(rewards.gold)
-        statistics.offlineXP += rewards.xp
+        statistics.offlineXP += appliedXP
         statistics.offlineGold += rewards.gold
     }
 
@@ -636,6 +784,7 @@ class GameEngine: ObservableObject {
             inventory: inventory,
             progress: progress,
             statistics: statistics,
+            autoOpenChestCooldowns: autoOpenChestCooldowns,
             autoEquipBestItems: autoEquipBestItems,
             worseEquipmentHandling: worseEquipmentHandling,
             soundEffectsEnabled: soundEffectsEnabled,
@@ -658,11 +807,12 @@ class GameEngine: ObservableObject {
         applyRuneTreeUnlocks()
         progress = data.progress
         statistics = data.statistics
+        autoOpenChestCooldowns = data.autoOpenChestCooldowns
         autoEquipBestItems = data.autoEquipBestItems
         worseEquipmentHandling = data.worseEquipmentHandling
         soundEffectsEnabled = data.soundEffectsEnabled
         unyieldingWillConsumedStageKey = data.unyieldingWillConsumedStageKey
-        enforceHeroLevelPacing()
+        needsSaveAfterStartupNormalization = enforceHeroLevelPacing() || needsSaveAfterStartupNormalization
         if autoEquipBestItems {
             equipBestItemsFromInventory()
         }
@@ -681,6 +831,7 @@ class GameEngine: ObservableObject {
         inventory = Inventory()
         progress = ProgressTracker()
         statistics = GameStatistics()
+        autoOpenChestCooldowns = AutoOpenChestCooldowns()
         recentBattleLog.removeAll()
         autoEquipBestItems = false
         worseEquipmentHandling = .keep
@@ -706,11 +857,22 @@ class GameEngine: ObservableObject {
         HeroLevelPacing.grantXP(amount, to: hero, maxLevel: HeroLevelPacing.maxHeroLevel(for: progress))
     }
 
-    private func enforceHeroLevelPacing() {
+    private func enforceHeroLevelPacing() -> Bool {
         hero.clampLevel(to: HeroLevelPacing.maxHeroLevel(for: progress))
     }
 
+    private func saveAfterStartupNormalizationIfNeeded() {
+        guard needsSaveAfterStartupNormalization else { return }
+        needsSaveAfterStartupNormalization = false
+        save()
+    }
+
     private func applyRuneTreeUnlocks() {
+        hero.runeAttackDamageBonus = runeTree.allHeroAttackDamage
+        hero.runeAttackDamageMultiplier = runeTree.allHeroAttackDamageMultiplier
+        hero.runeArmorBonus = runeTree.allHeroArmor
+        hero.runeArmorMultiplier = runeTree.allHeroArmorMultiplier
+        hero.runeMoveSpeedBonus = runeTree.allHeroMoveSpeed
         party.setUnlockedSlotCount(runeTree.unlockedPartySlotCount)
         inventory.setMaxCapacity(InventoryExpansion.maxCapacity(
             runeTree: runeTree,
@@ -723,6 +885,11 @@ class GameEngine: ObservableObject {
 extension GameEngine {
     func runSelfTestTick() {
         tick()
+    }
+
+    @discardableResult
+    func runSelfTestAutoOpenCooldown(seconds: TimeInterval) -> Int {
+        tickAutoOpenChests(deltaTime: seconds)
     }
 
     @discardableResult

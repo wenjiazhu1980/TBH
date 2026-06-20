@@ -9,12 +9,24 @@ import AppKit
         let maximumSize = MenuBarPopoverLayout.size(for: MenuBarPopoverLayout.maximumScale)
 
         #expect(defaultSize == MenuBarPopoverLayout.defaultSize)
+        #expect(MenuBarPopoverLayout.defaultSize.width >= BattleSceneMetrics.expectedPopoverContentWidth)
+        #expect(MenuBarPopoverLayout.defaultSize.width <= 660)
+        #expect(MenuBarPopoverLayout.defaultSize.height <= 600)
+        #expect(MenuBarPopoverLayout.contentMinHeight <= 460)
+        #expect(MenuBarPopoverLayout.bottomTabHeight >= 44)
+        let battleTabContentHeight = BattleSceneMetrics.compactHeight +
+            BattleLogMetrics.panelHeight +
+            BattlePanelMetrics.sectionSpacing +
+            BattlePanelMetrics.verticalPadding * 2
+        #expect(MenuBarPopoverLayout.contentMinHeight >= battleTabContentHeight)
+        #expect(MenuBarPopoverLayout.defaultSize.width >= BattleSceneMetrics.expectedPopoverContentWidth + BattlePanelMetrics.horizontalPadding * 2)
+        #expect(MenuBarPopoverLayout.minimumScale == MenuBarPopoverLayout.defaultScale)
         #expect(MenuBarPopoverLayout.normalizedScale(0.01) == MenuBarPopoverLayout.minimumScale)
         #expect(MenuBarPopoverLayout.normalizedScale(99) == MenuBarPopoverLayout.maximumScale)
-        #expect(minimumSize.width < defaultSize.width)
-        #expect(maximumSize.width > defaultSize.width)
-        #expect(minimumSize.height < defaultSize.height)
-        #expect(maximumSize.height > defaultSize.height)
+        #expect(minimumSize.width == defaultSize.width)
+        #expect(maximumSize.width == defaultSize.width)
+        #expect(minimumSize.height == defaultSize.height)
+        #expect(maximumSize.height == defaultSize.height)
         #expect(MenuBarPopoverLayout.scaleStep == 0.05)
         #expect(OriginalControlShortcuts.scaleResetFunctionKeyCode == Int(NSF11FunctionKey))
         #expect(OriginalControlShortcuts.scaleResetModifiers == [.shift])
