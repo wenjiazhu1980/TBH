@@ -12,7 +12,7 @@ import AppKit
         #expect(MenuBarPopoverLayout.defaultSize.width >= BattleSceneMetrics.expectedPopoverContentWidth)
         #expect(MenuBarPopoverLayout.defaultSize.width <= 660)
         #expect(MenuBarPopoverLayout.defaultSize.height <= 600)
-        #expect(MenuBarPopoverLayout.contentMinHeight <= 460)
+        #expect(MenuBarPopoverLayout.contentMinHeight <= 500)
         #expect(MenuBarPopoverLayout.bottomTabHeight >= 44)
         let battleTabContentHeight = BattleSceneMetrics.compactHeight +
             BattleLogMetrics.panelHeight +

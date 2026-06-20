@@ -254,17 +254,17 @@ import Testing
     }
 
     @Test func pendingSourceSkillValueReadinessPreservesRuntimeBoundary() {
-        #expect(PendingSourceSkillReviewMetrics.pendingValuedCandidateCount == 12)
-        #expect(PendingSourceSkillReviewMetrics.pendingValuedEmptyDeliveryCount == 12)
-        #expect(PendingSourceSkillReviewMetrics.pendingValuedUnnamedCount == 12)
+        #expect(PendingSourceSkillReviewMetrics.pendingValuedCandidateCount == 15)
+        #expect(PendingSourceSkillReviewMetrics.pendingValuedEmptyDeliveryCount == 15)
+        #expect(PendingSourceSkillReviewMetrics.pendingValuedUnnamedCount == 15)
         #expect(PendingSourceSkillReviewMetrics.highestPendingValueText == "209041=2300/r270; 309051=2300/r600")
         #expect(PendingSourceSkillReviewMetrics.highestPendingValueDetailPathText == "209041=/zh/skills/active/id-209041/; 309051=/zh/skills/active/id-309051/")
         #expect(PendingSourceSkillReviewMetrics.highestPendingValueDetailEvidenceText == "2 页 / Skill ID / 无说明 / 空 delivery")
-        #expect(PendingSourceSkillReviewMetrics.pendingValueDetailLocalePageCount == 24)
-        #expect(PendingSourceSkillReviewMetrics.pendingValueDetailSnapshotText == "24 中英页 / v1.00.13 / Skill ID / 无说明 / delivery — / 命中类型 —")
+        #expect(PendingSourceSkillReviewMetrics.pendingValueDetailLocalePageCount == 30)
+        #expect(PendingSourceSkillReviewMetrics.pendingValueDetailSnapshotText == "30 中英页 / v1.00.13 / Skill ID / 无说明 / delivery — / 命中类型 —")
         #expect(PendingSourceSkillReviewMetrics.highestPendingValueLocalePageCount == 4)
         #expect(PendingSourceSkillReviewMetrics.highestPendingValueSnapshotText == "4 中英页 / v1.00.13 / Skill ID / 无说明 / delivery —")
-        #expect(PendingSourceSkillReviewMetrics.pendingValueReadinessText == "12 value / 12 未命名 / 12 空形态")
+        #expect(PendingSourceSkillReviewMetrics.pendingValueReadinessText == "15 value / 15 未命名 / 15 空形态")
         #expect(PendingSourceSkillReviewMetrics.sourceValueReadinessBoundaryText.contains("才可接入 runtime"))
         #expect(PendingSourceSkillReviewMetrics.highestValueDetailBoundaryText.contains("无本地化说明"))
         #expect(PendingSourceSkillReviewMetrics.sourcePageSnapshotBoundaryText.contains("不是第二独立来源"))
