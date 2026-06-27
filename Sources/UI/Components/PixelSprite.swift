@@ -43,11 +43,28 @@ extension NSImage {
     private static let extractedSubdirectory = "Extracted"
     private static let resourceBundleName = "TBH-macOS_TBH.bundle"
 
-    /// 从 Extracted 素材目录加载图片。
+    /// 图片缓存 — 避免 SwiftUI 每次 diff 时重复从磁盘加载并解码 PNG。
+    /// 使用 NSCache 自动在内存压力下逐出条目，无需手动管理。
+    private static let imageCache = NSCache<NSString, NSImage>()
+
+    /// 从 Extracted 素材目录加载图片（带缓存）。
     /// 查找顺序：打包后的 .app Resources → SwiftPM 构建目录 → 仓库内开发路径。
     static func loadExtracted(named name: String) -> NSImage? {
         guard !name.isEmpty else { return nil }
 
+        let cacheKey = name as NSString
+        if let cached = imageCache.object(forKey: cacheKey) {
+            return cached
+        }
+
+        let loaded = loadExtractedFromDisk(named: name)
+        if let loaded {
+            imageCache.setObject(loaded, forKey: cacheKey)
+        }
+        return loaded
+    }
+
+    private static func loadExtractedFromDisk(named name: String) -> NSImage? {
         for bundle in resourceBundles() {
             if let url = bundle.url(forResource: name, withExtension: "png", subdirectory: extractedSubdirectory)
                       ?? bundle.url(forResource: name, withExtension: "png"),

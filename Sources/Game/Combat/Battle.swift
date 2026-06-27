@@ -282,6 +282,7 @@ class Battle: ObservableObject {
     @Published var heroHP: Int
     @Published var monsterHP: Int
     @Published var log: [BattleLogEntry] = []
+    private let maxLogEntries = 500
     @Published var isOver: Bool = false
     @Published var result: BattleResult?
 
@@ -499,7 +500,7 @@ class Battle: ObservableObject {
                 delivery: HeroSkills.baseAttackDelivery(for: primaryHeroClass),
                 sourceRange: HeroSkills.baseAttackSourceSkill(for: primaryHeroClass)?.range
             )
-            log.append(logEntry)
+            appendLog(logEntry)
             onEvent?(.heroAttack(isCrit: hit.isCrit))
             heroCooldown = heroAttackInterval
             heroBaseAttackCount += 1
@@ -525,6 +526,13 @@ class Battle: ObservableObject {
         applyEnemyAttacks()
     }
 
+    private func appendLog(_ entry: BattleLogEntry) {
+        log.append(entry)
+        if log.count > maxLogEntries {
+            log.removeFirst(log.count - maxLogEntries)
+        }
+    }
+
     private func applyEnemyAttacks() {
         for index in enemyStates.indices {
             guard !isOver else { return }
@@ -535,7 +543,7 @@ class Battle: ObservableObject {
             let attackDelivery = attackingMonster.sourceDelivery
             let target = nextEnemyAttackTarget()
             if incomingAttackWasDodged(damageElement: attackElement) {
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .monster,
                     damage: 0,
                     isCrit: false,
@@ -548,7 +556,7 @@ class Battle: ObservableObject {
                 continue
             }
             if incomingAttackWasBlocked() {
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .monster,
                     damage: 0,
                     isCrit: false,
@@ -572,7 +580,7 @@ class Battle: ObservableObject {
                 let damage = absorbIncomingDamage(modifiedIncomingDamage(hit.amount, damageElement: attackElement))
                 hero.takeDamage(damage)
                 heroHP = hero.currentHP  // 单一事实来源：以英雄实际 HP 为准
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .monster,
                     damage: damage,
                     isCrit: hit.isCrit,
@@ -597,7 +605,7 @@ class Battle: ObservableObject {
                 )
                 let damage = absorbIncomingDamage(modifiedIncomingDamage(hit.amount, damageElement: attackElement))
                 let supportWasDefeated = damageSupportMember(slotIndex: targetState.slotIndex, amount: damage)
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .monster,
                     damage: damage,
                     isCrit: hit.isCrit,
@@ -774,7 +782,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount, leechForHero: attacker == .hero) {
                 shockwaveDefeats.append(index)
             }
-            log.append(activeBuffDamageLogEntry(
+            appendLog(activeBuffDamageLogEntry(
                 attacker: attacker,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -888,7 +896,7 @@ class Battle: ObservableObject {
             critDamage: 1.5
         )
         let defeated = damageFocusedEnemy(hit.amount)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -1183,7 +1191,7 @@ class Battle: ObservableObject {
 
     private func logPassiveHeroHealing(_ name: String, amount: Int) {
         guard amount > 0 else { return }
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .hero,
             damage: amount,
             isCrit: false,
@@ -1385,7 +1393,7 @@ class Battle: ObservableObject {
 
         if skill.id == "50401" {
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1398,7 +1406,7 @@ class Battle: ObservableObject {
 
         if skill.id == "50501" {
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1427,7 +1435,7 @@ class Battle: ObservableObject {
 
         if skill.id == "30401" {
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1440,7 +1448,7 @@ class Battle: ObservableObject {
 
         if skill.id == "30501" {
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1457,7 +1465,7 @@ class Battle: ObservableObject {
 
         if skill.id == "40301" {
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1485,7 +1493,7 @@ class Battle: ObservableObject {
             hero.takeDamage(hpCost)
             heroHP = hero.currentHP
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: hpCost,
                 isCrit: false,
@@ -1499,7 +1507,7 @@ class Battle: ObservableObject {
         if skill.id == "60301" {
             _ = activateHeroBuff(for: skill)
             stunAliveEnemies()
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1512,7 +1520,7 @@ class Battle: ObservableObject {
 
         if skill.id == "60501" {
             _ = activateHeroBuff(for: skill)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1537,7 +1545,7 @@ class Battle: ObservableObject {
                 critDamage: hero.critDamage
             )
             let defeated = damageFocusedEnemy(hit.amount, leechForHero: true)
-            log.append(skillDamageLogEntry(
+            appendLog(skillDamageLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -1562,7 +1570,7 @@ class Battle: ObservableObject {
         if healAmount > 0 {
             let healed = hero.heal(healAmount)
             heroHP = hero.currentHP
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: healed,
                 isCrit: false,
@@ -1570,7 +1578,7 @@ class Battle: ObservableObject {
                 kind: healed > 0 ? .heal : .buff
             ))
         } else if activatedBuff {
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1578,7 +1586,7 @@ class Battle: ObservableObject {
                 kind: .buff
             ))
         } else {
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1608,7 +1616,7 @@ class Battle: ObservableObject {
             critDamage: hero.critDamage
         )
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
-        log.append(skillDamageLogEntry(
+        appendLog(skillDamageLogEntry(
             attacker: .hero,
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -1649,7 +1657,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
-            log.append(skillDamageLogEntry(
+            appendLog(skillDamageLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -1710,7 +1718,7 @@ class Battle: ObservableObject {
                 if damageEnemy(at: index, amount: hit.amount, leechForHero: true), !defeatedIndices.contains(index) {
                     defeatedIndices.append(index)
                 }
-                log.append(skillDamageLogEntry(
+                appendLog(skillDamageLogEntry(
                     attacker: .hero,
                     damage: hit.amount,
                     isCrit: hit.isCrit,
@@ -1756,7 +1764,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
-            log.append(skillDamageLogEntry(
+            appendLog(skillDamageLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -1808,7 +1816,7 @@ class Battle: ObservableObject {
                 didApply = true
                 didCrit = didCrit || hit.isCrit
                 let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
-                log.append(skillDamageLogEntry(
+                appendLog(skillDamageLogEntry(
                     attacker: .hero,
                     damage: hit.amount,
                     isCrit: hit.isCrit,
@@ -1866,7 +1874,7 @@ class Battle: ObservableObject {
             critDamage: hero.critDamage
         )
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
-        log.append(skillDamageLogEntry(
+        appendLog(skillDamageLogEntry(
             attacker: .hero,
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -1876,7 +1884,7 @@ class Battle: ObservableObject {
         if defeated {
             _ = completeEnemy(at: targetIndex)
         } else if lodgedArrowCount == 3 {
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: 0,
                 isCrit: false,
@@ -1904,7 +1912,7 @@ class Battle: ObservableObject {
             critDamage: hero.critDamage
         )
         let lodgedDefeated = damageEnemy(at: lodgedTargetIndex, amount: lodgedHit.amount, leechForHero: true)
-        log.append(skillDamageLogEntry(
+        appendLog(skillDamageLogEntry(
             attacker: .hero,
             damage: lodgedHit.amount,
             isCrit: lodgedHit.isCrit,
@@ -1920,7 +1928,7 @@ class Battle: ObservableObject {
         }
 
         _ = activateHeroBuff(for: skill)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .hero,
             damage: 0,
             isCrit: false,
@@ -1958,7 +1966,7 @@ class Battle: ObservableObject {
             didApply = true
             didCrit = didCrit || hit.isCrit
             let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
-            log.append(skillDamageLogEntry(
+            appendLog(skillDamageLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -2014,7 +2022,7 @@ class Battle: ObservableObject {
         for buff in activeHeroBuffs where buff.healPerHit > 0 {
             let healed = hero.heal(buff.healPerHit)
             heroHP = hero.currentHP
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: healed,
                 isCrit: false,
@@ -2031,7 +2039,7 @@ class Battle: ObservableObject {
 
         for buff in activeSupportSkillBuffs where buff.supportSlotIndex == member.slotIndex && buff.healPerHit > 0 {
             let healed = healSupportMember(at: supportIndex, amount: buff.healPerHit)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: healed,
                 isCrit: false,
@@ -2068,7 +2076,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount) {
                 defeatedIndices.append(index)
             }
-            log.append(activeBuffDamageLogEntry(
+            appendLog(activeBuffDamageLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -2109,7 +2117,7 @@ class Battle: ObservableObject {
                 if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                     defeatedIndices.append(index)
                 }
-                log.append(activeBuffDamageLogEntry(
+                appendLog(activeBuffDamageLogEntry(
                     attacker: .hero,
                     damage: hit.amount,
                     isCrit: hit.isCrit,
@@ -2163,7 +2171,7 @@ class Battle: ObservableObject {
             let healed = hero.heal(healAmount)
             if healed > 0 {
                 heroHP = hero.currentHP
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .hero,
                     damage: healed,
                     isCrit: false,
@@ -2175,7 +2183,7 @@ class Battle: ObservableObject {
             for index in supportStates.indices {
                 let supportHealed = healSupportMember(at: index, amount: healAmount)
                 guard supportHealed > 0 else { continue }
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .hero,
                     damage: supportHealed,
                     isCrit: false,
@@ -2232,7 +2240,7 @@ class Battle: ObservableObject {
         let healed = hero.heal(healAmount)
         if healed > 0 {
             heroHP = hero.currentHP
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: healed,
                 isCrit: false,
@@ -2244,7 +2252,7 @@ class Battle: ObservableObject {
         for index in supportStates.indices {
             let supportHealed = healSupportMember(at: index, amount: healAmount)
             guard supportHealed > 0 else { continue }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: supportHealed,
                 isCrit: false,
@@ -2268,7 +2276,7 @@ class Battle: ObservableObject {
             critDamage: hero.critDamage
         )
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
-        log.append(activeBuffDamageLogEntry(
+        appendLog(activeBuffDamageLogEntry(
             attacker: .hero,
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -2306,7 +2314,7 @@ class Battle: ObservableObject {
             critDamage: 1.5
         )
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount, leechForHero: true)
-        log.append(activeBuffDamageLogEntry(
+        appendLog(activeBuffDamageLogEntry(
             attacker: .support(member.heroClass),
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -2347,7 +2355,7 @@ class Battle: ObservableObject {
             if defeated {
                 defeatedIndices.append(index)
             }
-            log.append(activeBuffDamageLogEntry(
+            appendLog(activeBuffDamageLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -2367,7 +2375,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: followUpDamage, leechForHero: true) {
                 defeatedIndices.append(index)
             }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .hero,
                 damage: followUpDamage,
                 isCrit: false,
@@ -2419,7 +2427,7 @@ class Battle: ObservableObject {
             if defeated {
                 defeatedIndices.append(index)
             }
-            log.append(activeBuffDamageLogEntry(
+            appendLog(activeBuffDamageLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -2439,7 +2447,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: followUpDamage) {
                 defeatedIndices.append(index)
             }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: followUpDamage,
                 isCrit: false,
@@ -2468,7 +2476,7 @@ class Battle: ObservableObject {
                 continue
             }
             guard enemyStates[index].applyBleedingWound() else { continue }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: attacker,
                 damage: 0,
                 isCrit: false,
@@ -2546,7 +2554,7 @@ class Battle: ObservableObject {
             GroundSlamRockScaffold.maxCharges,
             max(groundSlamRockCharges, hitCount)
         )
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .hero,
             damage: 0,
             isCrit: false,
@@ -2575,7 +2583,7 @@ class Battle: ObservableObject {
         unyieldingWillWasUsed = true
         unyieldingWillAvailable = false
         onUnyieldingWillUsed?()
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .hero,
             damage: restored,
             isCrit: false,
@@ -2602,7 +2610,7 @@ class Battle: ObservableObject {
         let revivedHP = max(1, Int(Double(supportStates[supportIndex].maxHP) * Double(skill.levelOneValue) / 100.0))
         let restored = reviveSupportMember(at: supportIndex, withHP: revivedHP)
         supportStates[supportIndex].unyieldingWillWasUsed = true
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: restored,
             isCrit: false,
@@ -2670,7 +2678,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount, leechForHero: true) {
                 defeatedIndices.append(index)
             }
-            log.append(activeBuffDamageLogEntry(
+            appendLog(activeBuffDamageLogEntry(
                 attacker: .hero,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -2718,7 +2726,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount) {
                 defeatedIndices.append(index)
             }
-            log.append(activeBuffDamageLogEntry(
+            appendLog(activeBuffDamageLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -2782,7 +2790,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount, leechForHero: attacker == .hero) {
                 defeatedIndices.append(index)
             }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: attacker,
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -3082,7 +3090,7 @@ class Battle: ObservableObject {
                 focusedProjectileOnly: false,
                 appliesBleedingWound: true
             )
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3096,7 +3104,7 @@ class Battle: ObservableObject {
         if skill.id == "60301" {
             _ = activateSupportGeneralsCryBuff(for: skill, member: member)
             stunAliveEnemies()
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3113,7 +3121,7 @@ class Battle: ObservableObject {
 
         if skill.id == "10501" {
             _ = activateSupportSacredBladeBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3126,7 +3134,7 @@ class Battle: ObservableObject {
 
         if skill.id == "50301" {
             _ = activateSupportQuickLoaderBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3139,7 +3147,7 @@ class Battle: ObservableObject {
 
         if skill.id == "50401" {
             _ = activateSupportChargeTrapBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3152,7 +3160,7 @@ class Battle: ObservableObject {
 
         if skill.id == "30401" || skill.id == "50501" {
             _ = activateSupportSustainedDamageBuff(for: skill, member: member, focusedProjectileOnly: true)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3170,7 +3178,7 @@ class Battle: ObservableObject {
                 focusedProjectileOnly: false,
                 appliesColdSlow: true
             )
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3195,7 +3203,7 @@ class Battle: ObservableObject {
 
         if skill.id == "20401" {
             _ = activateSupportSwiftSurgeBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3236,7 +3244,7 @@ class Battle: ObservableObject {
 
         if skill.id == "40301" {
             _ = activateSupportWrathOfHeavenBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3249,7 +3257,7 @@ class Battle: ObservableObject {
 
         if skill.id == "10401" {
             _ = activateSupportAegisFieldBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3262,7 +3270,7 @@ class Battle: ObservableObject {
 
         if skill.id == "40401" {
             _ = activateSupportSanctuaryBuff(for: skill, member: member)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3287,7 +3295,7 @@ class Battle: ObservableObject {
                 critDamage: 1.5
             )
             let defeated = damageFocusedEnemy(hit.amount)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -3310,7 +3318,7 @@ class Battle: ObservableObject {
         if healAmount > 0 {
             let healed = hero.heal(healAmount)
             heroHP = hero.currentHP
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: healed,
                 isCrit: false,
@@ -3318,7 +3326,7 @@ class Battle: ObservableObject {
                 kind: healed > 0 ? .heal : .buff
             ))
         } else {
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3341,7 +3349,7 @@ class Battle: ObservableObject {
             _ = damageSupportMember(slotIndex: member.slotIndex, amount: hpCost)
         }
         _ = activateSupportBloodlustBuff(for: skill, member: member)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: hpCost,
             isCrit: false,
@@ -3628,7 +3636,7 @@ class Battle: ObservableObject {
             critDamage: 1.5
         )
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
-        log.append(skillDamageLogEntry(
+        appendLog(skillDamageLogEntry(
             attacker: .support(member.heroClass),
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -3667,7 +3675,7 @@ class Battle: ObservableObject {
             }
         }
 
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: attacker,
             damage: healed,
             isCrit: false,
@@ -3730,7 +3738,7 @@ class Battle: ObservableObject {
         guard let targetIndex = firstDefeatedSupportIndex() else { return false }
         let revivedHP = resurrectionHP(for: supportStates[targetIndex], skill: skill, appliesHeroPassiveHealing: true)
         let restored = reviveSupportMember(at: targetIndex, withHP: revivedHP)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .hero,
             damage: restored,
             isCrit: false,
@@ -3746,7 +3754,7 @@ class Battle: ObservableObject {
         guard let targetIndex = firstDefeatedSupportIndex(excludingSlotIndex: member.slotIndex) else { return false }
         let revivedHP = resurrectionHP(for: supportStates[targetIndex], skill: skill, appliesHeroPassiveHealing: false)
         let restored = reviveSupportMember(at: targetIndex, withHP: revivedHP)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: restored,
             isCrit: false,
@@ -3796,7 +3804,7 @@ class Battle: ObservableObject {
             didApply = true
             didCrit = didCrit || hit.isCrit
             let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -3861,7 +3869,7 @@ class Battle: ObservableObject {
             didApply = true
             didCrit = didCrit || hit.isCrit
             let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -3907,7 +3915,7 @@ class Battle: ObservableObject {
             critDamage: 1.5
         )
         let defeated = damageEnemy(at: targetIndex, amount: hit.amount)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -3920,7 +3928,7 @@ class Battle: ObservableObject {
         if defeated {
             _ = completeEnemy(at: targetIndex)
         } else if lodgedArrowCount == 3 {
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: 0,
                 isCrit: false,
@@ -3951,7 +3959,7 @@ class Battle: ObservableObject {
             critDamage: 1.5
         )
         let lodgedDefeated = damageEnemy(at: lodgedTargetIndex, amount: lodgedHit.amount)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: lodgedHit.amount,
             isCrit: lodgedHit.isCrit,
@@ -3975,7 +3983,7 @@ class Battle: ObservableObject {
             focusedProjectileOnly: false,
             displayName: "\(skill.name)电流"
         )
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: 0,
             isCrit: false,
@@ -4003,7 +4011,7 @@ class Battle: ObservableObject {
         )
         let defeatedIndex = focusedEnemyArrayIndex
         let defeated = damageFocusedEnemy(hit.amount)
-        log.append(BattleLogEntry(
+        appendLog(BattleLogEntry(
             attacker: .support(member.heroClass),
             damage: hit.amount,
             isCrit: hit.isCrit,
@@ -4057,7 +4065,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount) {
                 defeatedIndices.append(index)
             }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
@@ -4121,7 +4129,7 @@ class Battle: ObservableObject {
                 if damageEnemy(at: index, amount: hit.amount), !defeatedIndices.contains(index) {
                     defeatedIndices.append(index)
                 }
-                log.append(BattleLogEntry(
+                appendLog(BattleLogEntry(
                     attacker: .support(member.heroClass),
                     damage: hit.amount,
                     isCrit: hit.isCrit,
@@ -4170,7 +4178,7 @@ class Battle: ObservableObject {
             if damageEnemy(at: index, amount: hit.amount) {
                 defeatedIndices.append(index)
             }
-            log.append(BattleLogEntry(
+            appendLog(BattleLogEntry(
                 attacker: .support(member.heroClass),
                 damage: hit.amount,
                 isCrit: hit.isCrit,
